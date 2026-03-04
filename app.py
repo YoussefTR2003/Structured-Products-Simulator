@@ -271,8 +271,8 @@ with st.sidebar:
     steps_per_year = st.selectbox("Simulation steps/year", [252, 52, 12], index=0)
     obs_per_year = st.selectbox("Observation frequency/year", [12, 4, 2, 1], index=1)
 
-    coupon_pa = st.number_input("Coupon p.a.", min_value=0.0, value=0.10, step=0.01)
-    coupon_pa = coupon_pa / 100
+    coupon_pa_pct = st.number_input("Coupon p.a. (%)", min_value=0.0, value=10.0, step=0.5)
+    coupon_pa = coupon_pa_pct / 100
     coupon_trigger = st.number_input("Coupon trigger (ratio)", min_value=0.0, max_value=2.0, value=0.70, step=0.01)
     call_trigger = st.number_input("Autocall trigger (ratio)", min_value=0.0, max_value=2.0, value=1.00, step=0.01)
     barrier = st.number_input("Maturity barrier (ratio)", min_value=0.0, max_value=2.0, value=0.60, step=0.01)
