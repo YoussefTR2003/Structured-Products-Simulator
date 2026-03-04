@@ -134,7 +134,7 @@ def phoenix_payoff(
     # ---- PRICING PARAMS (NEW) ----
     r: float = 0.0,
     steps_per_year: int = 252,
-    T: float | None = None,   # if None, inferred from paths
+    T: Optional[float] = None,  # if None, inferred from paths,   # if None, inferred from paths
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Returns discounted PV per simulation (price paths already simulated under Q).
