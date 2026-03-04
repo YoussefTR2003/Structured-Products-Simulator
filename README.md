@@ -8,16 +8,16 @@ This project is designed as an **educational and analytical framework** to under
 
 ---
 
-# Overview
+## Overview
 
 Structured products such as **Phoenix Autocallables** are widely used in equity derivatives markets to offer investors enhanced yield with conditional capital protection.
 
 Their payoff structure typically includes:
 
-- Periodic coupon payments
-- Autocall mechanisms
-- Memory coupon features
-- Downside protection barriers
+- Periodic coupon payments  
+- Autocall mechanisms  
+- Memory coupon features  
+- Downside protection barriers  
 - Basket structures (Worst-of, Best-of, Average, Weighted)
 
 Because these products are **path-dependent and often multi-asset**, closed-form pricing solutions are generally not available.  
@@ -25,77 +25,70 @@ Instead, **Monte Carlo simulation** is used to estimate expected discounted payo
 
 ---
 
-# Key Features
+## Key Features
 
 ### Product Mechanics
-
-The simulator models the full lifecycle of a Phoenix structured product:
-
+The simulator models the lifecycle of a Phoenix structured product:
 - Coupon payments conditional on barrier levels
 - Memory coupon accumulation
 - Early redemption through autocall triggers
 - Capital protection via maturity barriers
 
 ### Multi-Asset Basket Support
-
-The model supports several basket constructions:
-
+Supported basket constructions:
 - **Worst-of**
 - **Best-of**
 - **Arithmetic average**
 - **Weighted basket**
 
 ### Market Data Integration
-
-The application can automatically retrieve:
-
+The application can retrieve:
 - Spot prices
 - Historical volatility
-- Correlation matrices
-
+- Correlation matrices  
 using **Yahoo Finance (yfinance)**.
 
-Users can also manually specify market parameters.
+Users can also manually specify parameters.
 
 ### Monte Carlo Pricing
+Asset paths are simulated using **correlated Geometric Brownian Motion (GBM)**.
 
-Asset paths are simulated using **correlated Geometric Brownian Motion (GBM)**:
+Risk-neutral dynamics (plain text):
 
-\[
-dS_t = S_t \left((r - q)dt + \sigma dW_t\right)
-\]
+- dS/S = (r - q) dt + sigma dW
 
-Pricing is computed as the **expected discounted payoff** under the risk-neutral measure:
+Where:
+- `r` = risk-free rate
+- `q` = dividend yield
+- `sigma` = volatility
+- `W` = Brownian motion (with correlations across assets)
 
-\[
-Price = \mathbb{E}^{\mathbb{Q}} \left[\sum DF(t_k) \cdot CF(t_k)\right]
-\]
+**Pricing idea (plain text):**
+
+- Price ≈ average over simulations of: sum over cashflow dates of [ DiscountFactor(t) * Cashflow(t) ]
+
+With a flat rate:
+- DiscountFactor(t) = exp(-r * t)
 
 ### Risk Metrics
-
 The application provides:
-
-- Estimated product price
+- Estimated product price (PV)
 - Autocall probability
 - Payoff distribution
-- Tail risk statistics
+- Tail risk statistics (quantiles)
 - Expected autocall timing
 
 Optional **Greeks sensitivities** can be computed using **bump-and-revalue Monte Carlo**.
 
 ---
 
-# Visualizations
-
-The application generates several visual outputs:
-
+## Visualizations
+The application generates:
 - Payoff distribution histogram
 - Autocall timing distribution
 - Simulated basket paths
 - Market data preview
 
-These visualizations help understand the **path-dependent risk profile** of the product.
-
 ---
 
-# Project Structure
+## Project Structure
