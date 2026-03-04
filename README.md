@@ -92,3 +92,22 @@ The application generates:
 ---
 
 ## Project Structure
+
+Main components:
+
+| Module | Description |
+|------|-------------|
+| `simulate_correlated_gbm` | Simulates correlated asset paths |
+| `basket_ratio` | Computes basket performance |
+| `phoenix_payoff` | Implements Phoenix payoff logic + discounting |
+| `fetch_market_params` | Retrieves market data from Yahoo Finance |
+
+---
+
+## Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/yourusername/structured-products-simulator.git
+cd structured-products-simulator
