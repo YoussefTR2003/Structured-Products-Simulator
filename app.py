@@ -376,7 +376,7 @@ coupon_rate_per_obs = coupon_pa / int(obs_per_year)
 if run_simulation:
 
     with st.spinner("Simulating paths and pricing..."):
-    paths = simulate_correlated_gbm(
+        paths = simulate_correlated_gbm(
         S0=S0,
         r=float(r),
         q=q,
