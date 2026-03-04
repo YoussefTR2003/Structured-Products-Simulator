@@ -131,9 +131,17 @@ def phoenix_payoff(
     basket_kind: str = "worst-of",
     weights=None,
     memory: bool = True,
+    # ---- PRICING PARAMS (NEW) ----
+    r: float = 0.0,
+    steps_per_year: int = 252,
+    T: float | None = None,   # if None, inferred from paths
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Returns discounted PV per simulation (price paths already simulated under Q).
+    PV = sum_k DF(t_k)*CF(t_k) + DF(T)*CF(T)
+    """
     paths = ensure_3d_paths(paths)
-    n_sims, _, n_assets = paths.shape
+    n_sims, n_steps_plus1, n_assets = paths.shape
 
     S0 = np.asarray(S0, float)
     if S0.ndim == 0:
@@ -141,42 +149,59 @@ def phoenix_payoff(
     if S0.size != n_assets:
         raise ValueError("S0 must match number of assets in paths.")
 
-    payoff = np.zeros(n_sims)
+    # infer maturity if not provided
+    if T is None:
+        n_steps = n_steps_plus1 - 1
+        T = n_steps / float(steps_per_year)
+
+    pv = np.zeros(n_sims)  # discounted payoff
     autocalled = np.zeros(n_sims, dtype=bool)
     autocall_obs = np.full(n_sims, -1, dtype=int)
 
-    accrued = np.zeros(n_sims)
+    accrued = np.zeros(n_sims)  # undiscounted accrued coupon amount (for memory)
 
-    for k, t in enumerate(obs_idx):
+    for k, step in enumerate(obs_idx):
         alive = ~autocalled
         if not np.any(alive):
             break
 
-        ratio = basket_ratio(paths[alive, t, :], S0, kind=basket_kind, weights=weights)
+        time = step / float(steps_per_year)
+        df = np.exp(-float(r) * float(time))
 
+        ratio = basket_ratio(paths[alive, step, :], S0, kind=basket_kind, weights=weights)
+
+        # ---- Coupons (paid at this observation date, discounted by df) ----
         coupon_ok = ratio >= coupon_trigger
+
         if memory:
+            # accrue one coupon for alive paths (undiscounted amount)
             accrued_alive = accrued[alive] + nominal * coupon_rate_per_obs
-            payoff[alive] += accrued_alive * coupon_ok
+            # if coupon condition met, pay all accrued now (discounted)
+            pv[alive] += (accrued_alive * coupon_ok) * df
+            # if not met, keep it in memory
             accrued[alive] = accrued_alive * (~coupon_ok)
         else:
-            payoff[alive] += (nominal * coupon_rate_per_obs) * coupon_ok
+            pv[alive] += (nominal * coupon_rate_per_obs) * coupon_ok * df
 
+        # ---- Autocall (nominal paid at this observation date, discounted by df) ----
         call_ok = ratio >= call_trigger
         idx_alive = np.where(alive)[0]
         called_idx = idx_alive[call_ok]
         if called_idx.size:
             autocalled[called_idx] = True
             autocall_obs[called_idx] = k
-            payoff[called_idx] += nominal
+            pv[called_idx] += nominal * df  # discount nominal repayment at call date
 
+    # ---- Maturity cashflow (discounted at DF(T)) ----
     alive = ~autocalled
     if np.any(alive):
+        dfT = np.exp(-float(r) * float(T))
         ratio_T = basket_ratio(paths[alive, -1, :], S0, kind=basket_kind, weights=weights)
         protected = ratio_T >= barrier
-        payoff[alive] += np.where(protected, nominal, nominal * ratio_T)
+        maturity_cf = np.where(protected, nominal, nominal * ratio_T)
+        pv[alive] += maturity_cf * dfT
 
-    return payoff, autocalled, autocall_obs
+    return pv, autocalled, autocall_obs
 
 
 # ----------------------------
@@ -187,7 +212,7 @@ def summarize_metrics(payoff: np.ndarray, autocalled: np.ndarray, autocall_obs: 
     autocalled = np.asarray(autocalled, bool)
 
     out = {
-        "Expected payoff": float(np.mean(payoff)),
+        "Estimated price (PV)": float(np.mean(payoff)),
         "Median payoff": float(np.median(payoff)),
         "P(Autocall)": float(np.mean(autocalled)),
         "5% quantile": float(np.quantile(payoff, 0.05)),
@@ -352,17 +377,11 @@ if run:
             )
 
             payoff, autocalled, autocall_obs = phoenix_payoff(
-                paths=paths,
-                S0=S0,
-                nominal=float(nominal),
-                obs_idx=obs_idx,
-                coupon_rate_per_obs=float(coupon_rate_per_obs),
-                coupon_trigger=float(coupon_trigger),
-                call_trigger=float(call_trigger),
-                barrier=float(barrier),
-                basket_kind=basket_kind,
-                weights=weights,
-                memory=bool(memory),
+                paths=paths,S0=S0,nominal=float(nominal),obs_idx=obs_idx,coupon_rate_per_obs=float(coupon_rate_per_obs),
+                coupon_trigger=float(coupon_trigger),call_trigger=float(call_trigger),barrier=float(barrier),
+                basket_kind=basket_kind,weights=weights,memory=bool(memory),r=float(r),steps_per_year=int(steps_per_year),
+                T=float(T),
+
             )
 
             metrics_df = summarize_metrics(payoff, autocalled, autocall_obs, int(obs_per_year))
