@@ -6,6 +6,16 @@ The application allows users to simulate multi-asset structured products (e.g. *
 
 This project is designed as an **educational and analytical framework** to understand the mechanics and risk profile of structured products used in **Equity Derivatives desks**.
 
+## Live Application
+
+You can try the app directly here:
+
+**Streamlit App:**  
+https://structured-appucts-simulator-uhvao5kyqp6ied8ccilpef.streamlit.app/
+
+---
+
+## Overview
 ---
 
 ## Overview
