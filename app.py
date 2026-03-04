@@ -369,9 +369,47 @@ if basket_kind == "weighted":
         weights = np.array(w_list, float)
 
 # --- Run simulation & product
+# --- Run simulation & product
 n_steps = int(round(T * steps_per_year))
 obs_idx = build_obs_idx(T, steps_per_year, int(obs_per_year))
 coupon_rate_per_obs = coupon_pa / int(obs_per_year)
+
+# If you used the form button, keep this name consistent:
+# run_simulation = st.form_submit_button("Run Simulation")
+
+if not run_simulation:
+    st.info("Adjust parameters, then click **Run Simulation**.")
+    st.stop()
+
+with st.spinner("Simulating paths and pricing..."):
+
+    paths = simulate_correlated_gbm(
+        S0=S0,
+        r=float(r),
+        q=q,
+        sigma=sigma,
+        corr=corr,
+        T=float(T),
+        n_steps=n_steps,
+        n_sims=int(n_sims),
+        seed=int(seed),
+    )
+
+    payoff, autocalled, autocall_obs = phoenix_payoff(
+        paths=paths,
+        S0=S0,
+        nominal=float(nominal),
+        obs_idx=obs_idx,
+        coupon_rate_per_obs=float(coupon_rate_per_obs),
+        coupon_trigger=float(coupon_trigger),
+        call_trigger=float(call_trigger),
+        barrier=float(barrier),
+        basket_kind=basket_kind,
+        weights=weights,
+        memory=bool(memory),
+    )
+
+metrics_df = summarize_metrics(payoff, autocalled, autocall_obs, int(obs_per_year))
 
 if run_simulation:
 
