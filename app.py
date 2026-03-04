@@ -5,7 +5,7 @@
 # - Results stored in st.session_state to avoid recomputation on every rerun
 
 from __future__ import annotations
-
+from typing import Optional
 import numpy as np
 import pandas as pd
 import streamlit as st
