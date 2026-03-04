@@ -5,7 +5,6 @@
 # - Multi-asset (1..5), basket (worst-of / best-of / average / weighted)
 # - Phoenix-style payoff: conditional coupons (+ optional memory), autocall, maturity barrier
 
-%pip install --upgrade streamlit
 import numpy as np
 import pandas as pd
 import streamlit as st
