@@ -256,7 +256,7 @@ def fetch_market_params(tickers: list[str], lookback_years: int) -> tuple[np.nda
 # Streamlit UI
 # ----------------------------
 st.set_page_config(page_title="Structured Products Simulator made by Youssef Triki", layout="wide")
-st.title("Structured Products Simulator (Phoenix)")
+st.title("Structured Products Simulator (Phoenix) made by Youssef Triki")
 
 if "results" not in st.session_state:
     st.session_state["results"] = None
