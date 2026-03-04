@@ -5,6 +5,7 @@
 # - Multi-asset (1..5), basket (worst-of / best-of / average / weighted)
 # - Phoenix-style payoff: conditional coupons (+ optional memory), autocall, maturity barrier
 
+%pip install --upgrade streamlit
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -246,11 +247,35 @@ st.set_page_config(page_title="Structured Products Simulator", layout="wide")
 st.title("Structured Products Simulator (Phoenix) — Manual + Market Data")
 
 with st.sidebar:
-    st.header("Mode")
-    mode = st.radio("Parameter source", ["Manual parameters", "Market data (Yahoo Finance)"], index=0)
 
-    st.header("Product")
-    nominal = st.number_input("Nominal", min_value=1.0, value=1000.0, step=100.0)
+    with st.form("params_form"):
+
+        st.header("Mode")
+        mode = st.radio("Parameter source", ["Manual parameters", "Market data (Yahoo Finance)"], index=0)
+
+        st.header("Product")
+        nominal = st.number_input("Nominal", min_value=1.0, value=1000.0, step=100.0)
+
+        T = st.number_input("Maturity (years)", min_value=0.25, value=3.0, step=0.25)
+        steps_per_year = st.selectbox("Simulation steps/year", [252, 52, 12], index=0)
+        obs_per_year = st.selectbox("Observation frequency/year", [12, 4, 2, 1], index=1)
+
+        coupon_pa = st.number_input("Coupon p.a.", min_value=0.0, value=0.10, step=0.01)
+        coupon_trigger = st.number_input("Coupon trigger", min_value=0.0, max_value=2.0, value=0.70, step=0.01)
+        call_trigger = st.number_input("Autocall trigger", min_value=0.0, max_value=2.0, value=1.00, step=0.01)
+        barrier = st.number_input("Maturity barrier", min_value=0.0, max_value=2.0, value=0.60, step=0.01)
+
+        memory = st.checkbox("Memory coupon", value=True)
+
+        st.header("Basket")
+        basket_kind = st.selectbox("Basket type", ["worst-of", "best-of", "average", "weighted"], index=0)
+
+        r = st.number_input("Risk-free rate r", value=0.02, step=0.005)
+
+        n_sims = st.slider("Number of simulations", 5000, 60000, 20000)
+        seed = st.number_input("Random seed", value=42)
+
+        run_simulation = st.form_submit_button("Run Simulation")
     T = st.number_input("Maturity (years)", min_value=0.25, value=3.0, step=0.25)
     steps_per_year = st.selectbox("Simulation steps/year", [252, 52, 12], index=0)
     obs_per_year = st.selectbox("Observation frequency/year", [12, 4, 2, 1], index=1)
@@ -349,7 +374,9 @@ n_steps = int(round(T * steps_per_year))
 obs_idx = build_obs_idx(T, steps_per_year, int(obs_per_year))
 coupon_rate_per_obs = coupon_pa / int(obs_per_year)
 
-with st.spinner("Simulating paths and pricing..."):
+if run_simulation:
+
+    with st.spinner("Simulating paths and pricing..."):
     paths = simulate_correlated_gbm(
         S0=S0,
         r=float(r),
