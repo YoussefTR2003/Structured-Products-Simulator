@@ -295,7 +295,6 @@ def show_documentation():
             "🧮 Geometric Brownian Motion",
             "🧺 Basket Mechanisms",
             "💰 Payoff Calculation",
-            "⚙️ Technical Details"
         ]
     )
     
