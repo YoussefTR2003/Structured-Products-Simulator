@@ -804,7 +804,7 @@ def show_pricer():
         use_q = st.checkbox("Set dividend yields", value=False)
         
         st.header("🎲 Monte Carlo")
-        n_sims = st.slider("Simulations", 5000, 30000, 10000, step=5000)
+        n_sims = st.slider("Simulations", 1000, 10000, 10000, step=1000)
         seed = st.number_input("Random seed", value=42, step=1)
         
         n_steps_est = int(round(T * steps_per_year))
