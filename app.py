@@ -691,45 +691,7 @@ def show_documentation():
                 weighted_perf = w1 * perf_values[0] + w2 * perf_values[1] + w3 * perf_values[2]
                 st.metric("Weighted Basket Performance", f"{weighted_perf:.0%}")
     
-    # SECTION 6: Payoff Calculation
-    elif section == "💰 Payoff Calculation":
-        st.header("💰 Payoff Calculation")
-        
-        st.markdown("""
-        ### Phoenix Payoff Logic
-        
-        The product checks the basket performance at each observation date:
-        """)
-        
-        st.subheader("📊 Decision Tree")
-        
-        st.code("""
-FOR each observation date:
     
-    IF basket >= Autocall Trigger (e.g., 100%):
-        → Pay: Nominal + All Coupons (including memory)
-        → Product ENDS
-    
-    ELSE IF basket >= Coupon Trigger (e.g., 70%):
-        → Pay: Coupon for this period (+ memory if applicable)
-        → Continue to next observation
-    
-    ELSE:
-        → No coupon
-        → If MEMORY = True: Accumulate unpaid coupon
-        → Continue to next observation
-
-AT Maturity (if not autocalled):
-    
-    IF basket >= Barrier (e.g., 60%):
-        → Pay: Nominal + Any remaining coupons
-    
-    ELSE:
-        → Pay: Nominal × basket performance
-        → CAPITAL LOSS!
-        """, language="text")
-    
-   
 # ==========================================
 # PRICER PAGE
 # ==========================================
