@@ -1,5 +1,5 @@
 """
-Autocall Athena Pricer - Phoenix Structure
+Autocall Pricer - Phoenix Structure
 A Streamlit application for pricing autocallable structured products
 """
 
