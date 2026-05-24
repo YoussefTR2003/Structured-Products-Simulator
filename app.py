@@ -310,7 +310,7 @@ def main():
         use_q = st.checkbox("Set dividend yields", value=False)
         
         st.header("🎲 Monte Carlo")
-        n_sims = st.slider("Simulations", 5000, 120000, 30000, step=5000)
+        n_sims = st.slider("Simulations", 5000, 10000, 1000, step=1000)
         seed = st.number_input("Random seed", value=42, step=1)
     
     tickers = None
