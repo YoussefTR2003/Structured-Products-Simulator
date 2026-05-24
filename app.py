@@ -57,23 +57,26 @@ def cholesky_safe(corr: np.ndarray) -> np.ndarray:
 # MARKET MODEL
 # ----------------------------
 
+@st.cache_data(show_spinner="🔄 Simulating paths...")
 def simulate_correlated_gbm(
-    S0: np.ndarray,
+    S0: tuple,  # Changed to tuple for hashability
     r: float,
-    q: np.ndarray,
-    sigma: np.ndarray,
-    corr: np.ndarray,
+    q: tuple,   # Changed to tuple for hashability
+    sigma: tuple,  # Changed to tuple for hashability
+    corr: tuple,   # Changed to tuple for hashability
     T: float,
     n_steps: int,
     n_sims: int,
     seed: int = 42,
 ) -> np.ndarray:
     """Simulate correlated GBM paths under risk-neutral measure."""
-    rng = np.random.default_rng(seed)
+    # Convert back to arrays
+    S0 = np.array(S0)
+    q = np.array(q)
+    sigma = np.array(sigma)
+    corr = np.array(corr).reshape(int(np.sqrt(len(corr))), -1)
     
-    S0 = np.asarray(S0, dtype=float)
-    q = np.asarray(q, dtype=float)
-    sigma = np.asarray(sigma, dtype=float)
+    rng = np.random.default_rng(seed)
     
     n_assets = S0.size
     dt = T / n_steps
@@ -423,7 +426,18 @@ def main():
     
     try:
         with st.spinner("🔄 Running Monte Carlo simulation..."):
-            paths = simulate_correlated_gbm(S0, r, q, sigma, corr, T, n_steps, int(n_sims), int(seed))
+            # Convert to tuples for caching
+            paths = simulate_correlated_gbm(
+                S0=tuple(S0),
+                r=r,
+                q=tuple(q),
+                sigma=tuple(sigma),
+                corr=tuple(corr.flatten()),
+                T=T,
+                n_steps=n_steps,
+                n_sims=int(n_sims),
+                seed=int(seed)
+            )
             payoff, autocalled, autocall_obs = phoenix_payoff(
                 paths, S0, nominal, obs_idx, coupon_rate_per_obs,
                 coupon_trigger, call_trigger, barrier, basket_kind, weights, memory
