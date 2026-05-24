@@ -730,49 +730,7 @@ AT Maturity (if not autocalled):
         → CAPITAL LOSS!
         """, language="text")
     
-    # SECTION 7: Technical Details
-    elif section == "⚙️ Technical Details":
-        st.header("⚙️ Technical Implementation Details")
-        
-        st.markdown("""
-        ### Code Architecture
-        
-        The pricer is built with these main components:
-        """)
-        
-        with st.expander("🔢 1. Simulation Engine"):
-            st.code("""
-def simulate_correlated_gbm(S0, r, q, sigma, corr, T, n_steps, n_sims, seed):
-    # 1. Cholesky decomposition of correlation
-    L = cholesky(corr)
-    
-    # 2. Generate independent random shocks
-    Z = randn(n_sims, n_steps, n_assets)
-    
-    # 3. Make them correlated
-    dW = Z @ L.T
-    
-    # 4. Compute GBM paths
-    drift = (r - q - 0.5*sigma²) * dt
-    diffusion = sigma * sqrt(dt) * dW
-    
-    log_paths = cumsum(drift + diffusion)
-    paths = S0 * exp(log_paths)
-    
-    return paths
-            """, language="python")
-        
-        st.markdown("""
-        ### Performance Optimization
-        
-        | Technique | Purpose | Impact |
-        |-----------|---------|--------|
-        | `@st.cache_data` | Cache simulations | 100x faster re-runs |
-        | NumPy vectorization | Batch operations | 50x faster than loops |
-        | Cholesky decomposition | Efficient correlation | O(n²) instead of O(n³) |
-        | `dtype=float` | Memory efficiency | 50% less memory |
-        """)
-
+   
 # ==========================================
 # PRICER PAGE
 # ==========================================
