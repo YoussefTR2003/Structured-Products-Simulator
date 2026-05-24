@@ -10,6 +10,12 @@ import matplotlib.pyplot as plt
 import yfinance as yf
 from typing import Tuple, Optional
 
+# Initialize session state
+if 'prev_n_assets' not in st.session_state:
+    st.session_state.prev_n_assets = 2
+if 'prev_basket_kind' not in st.session_state:
+    st.session_state.prev_basket_kind = "worst-of"
+
 # ----------------------------
 # NUMERICAL UTILITIES
 # ----------------------------
@@ -33,7 +39,6 @@ def nearest_psd_corr(mat: np.ndarray, eps: float = 1e-10) -> np.ndarray:
     B = vecs @ np.diag(vals) @ vecs.T
     B = 0.5 * (B + B.T)
 
-    # Re-normalize diagonal to 1
     d = np.sqrt(np.maximum(np.diag(B), eps))
     C = B / np.outer(d, d)
     np.fill_diagonal(C, 1.0)
@@ -63,12 +68,7 @@ def simulate_correlated_gbm(
     n_sims: int,
     seed: int = 42,
 ) -> np.ndarray:
-    """
-    Simulate correlated GBM paths under risk-neutral measure.
-    
-    Returns:
-        paths: np.ndarray of shape (n_sims, n_steps+1, n_assets)
-    """
+    """Simulate correlated GBM paths under risk-neutral measure."""
     rng = np.random.default_rng(seed)
     
     S0 = np.asarray(S0, dtype=float)
@@ -80,11 +80,9 @@ def simulate_correlated_gbm(
     
     L = cholesky_safe(corr)
     
-    # Generate correlated normal increments
     Z = rng.standard_normal((n_sims, n_steps, n_assets))
     dW = Z @ L.T
     
-    # GBM: dS = (r-q)S dt + sigma S dW
     drift = (r - q - 0.5 * sigma**2) * dt
     diffusion = sigma * np.sqrt(dt) * dW
     
@@ -107,18 +105,7 @@ def basket_ratio(
     kind: str = "worst-of", 
     weights: Optional[np.ndarray] = None
 ) -> np.ndarray:
-    """
-    Calculate basket performance ratio.
-    
-    Args:
-        St_t: (n_sims, n_assets) current prices
-        S0: (n_assets,) initial prices
-        kind: basket type
-        weights: optional weights for weighted basket
-        
-    Returns:
-        ratio: (n_sims,) basket performance
-    """
+    """Calculate basket performance ratio."""
     S0 = np.asarray(S0, dtype=float)
     R = St_t / S0[np.newaxis, :]
     
@@ -165,14 +152,7 @@ def phoenix_payoff(
     weights: Optional[np.ndarray] = None,
     memory: bool = True,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Phoenix autocall payoff calculator.
-    
-    Returns:
-        payoff: (n_sims,) total payoff
-        autocalled: (n_sims,) boolean autocall flag
-        autocall_obs: (n_sims,) observation index of autocall (-1 if not called)
-    """
+    """Phoenix autocall payoff calculator."""
     paths = ensure_3d_paths(paths)
     n_sims, _, n_assets = paths.shape
     
@@ -195,7 +175,6 @@ def phoenix_payoff(
         St = paths[alive, t, :]
         ratio = basket_ratio(St, S0, kind=basket_kind, weights=weights)
         
-        # Coupon logic
         coupon_ok = ratio >= coupon_trigger
         
         if memory:
@@ -205,7 +184,6 @@ def phoenix_payoff(
         else:
             payoff[alive] += (nominal * coupon_rate_per_obs) * coupon_ok
         
-        # Autocall logic
         call_ok = ratio >= call_trigger
         idx_alive = np.where(alive)[0]
         called_idx = idx_alive[call_ok]
@@ -215,7 +193,6 @@ def phoenix_payoff(
             autocall_obs[called_idx] = k
             payoff[called_idx] += nominal
     
-    # Maturity payoff for non-autocalled
     alive = ~autocalled
     if np.any(alive):
         ST = paths[alive, -1, :]
@@ -261,24 +238,13 @@ def fetch_market_params(
     tickers: list, 
     lookback_years: int
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, pd.DataFrame, list]:
-    """
-    Fetch market data from Yahoo Finance.
-    Returns actual tickers that were successfully downloaded.
-    """
+    """Fetch market data from Yahoo Finance."""
     try:
         end = pd.Timestamp.today()
         start = end - pd.DateOffset(years=lookback_years)
         
-        # Download data
-        data = yf.download(
-            tickers, 
-            start=start, 
-            end=end, 
-            auto_adjust=True, 
-            progress=False
-        )
+        data = yf.download(tickers, start=start, end=end, auto_adjust=True, progress=False)
         
-        # Handle single vs multiple tickers
         if len(tickers) == 1:
             if 'Close' in data and not data['Close'].empty:
                 px = data['Close'].to_frame(tickers[0])
@@ -291,17 +257,14 @@ def fetch_market_params(
             else:
                 px = data['Close']
             
-            # Drop columns with all NaN (failed downloads)
             px = px.dropna(axis=1, how='all')
             successful_tickers = px.columns.tolist()
         
-        # Clean data
         px = px.dropna()
         
         if px.empty or px.shape[1] == 0:
-            raise ValueError("No valid price data returned. Check tickers.")
+            raise ValueError("No valid price data returned.")
         
-        # Calculate parameters
         rets = px.pct_change().dropna()
         S0 = px.iloc[-1].values
         sigma = rets.std().values * np.sqrt(252)
@@ -320,14 +283,9 @@ def main():
     st.set_page_config(page_title="Autocall Athena Pricer", layout="wide")
     st.title("🏛️ Autocall Athena Pricer — Phoenix Structure")
     
-    # Sidebar controls
     with st.sidebar:
         st.header("📊 Mode")
-        mode = st.radio(
-            "Parameter source", 
-            ["Manual parameters", "Market data (Yahoo Finance)"],
-            index=0
-        )
+        mode = st.radio("Parameter source", ["Manual parameters", "Market data (Yahoo Finance)"], index=0)
         
         st.header("📋 Product Structure")
         nominal = st.number_input("Nominal", min_value=1.0, value=1000.0, step=100.0)
@@ -352,7 +310,6 @@ def main():
         n_sims = st.slider("Simulations", 5000, 120000, 30000, step=5000)
         seed = st.number_input("Random seed", value=42, step=1)
     
-    # Asset parameters
     tickers = None
     px_preview = None
     
@@ -372,7 +329,6 @@ def main():
             with st.spinner("📡 Fetching market data..."):
                 S0, sigma, corr, px_preview, tickers = fetch_market_params(requested_tickers, lookback_years)
             
-            # Warning if some tickers failed
             if len(tickers) < len(requested_tickers):
                 failed = set(requested_tickers) - set(tickers)
                 st.warning(f"⚠️ Could not download: {', '.join(failed)}. Proceeding with: {', '.join(tickers)}")
@@ -398,36 +354,24 @@ def main():
             st.error(f"❌ Market data error: {str(e)}")
             st.stop()
     
-    else:  # Manual mode
+    else:
         with st.sidebar:
             st.subheader("Asset Parameters")
             n_assets = st.number_input("Number of underlyings", min_value=1, max_value=5, value=2, step=1)
+            
+            # Detect if n_assets changed
+            if int(n_assets) != st.session_state.prev_n_assets:
+                st.session_state.prev_n_assets = int(n_assets)
+                st.rerun()
             
             S0_list, sigma_list, q_list = [], [], []
             
             for i in range(int(n_assets)):
                 st.markdown(f"**Asset {i+1}**")
-                S0_list.append(st.number_input(
-                    f"S0 #{i+1}", 
-                    value=100.0, 
-                    step=1.0, 
-                    key=f"S0_{i}"
-                ))
-                sigma_list.append(st.number_input(
-                    f"Volatility #{i+1}", 
-                    value=0.25, 
-                    step=0.01, 
-                    format="%.2f",
-                    key=f"sig_{i}"
-                ))
+                S0_list.append(st.number_input(f"S0 #{i+1}", value=100.0, step=1.0, key=f"S0_{i}"))
+                sigma_list.append(st.number_input(f"Volatility #{i+1}", value=0.25, step=0.01, format="%.2f", key=f"sig_{i}"))
                 if use_q:
-                    q_list.append(st.number_input(
-                        f"Div yield #{i+1}", 
-                        value=0.00, 
-                        step=0.005,
-                        format="%.3f",
-                        key=f"q_{i}"
-                    ))
+                    q_list.append(st.number_input(f"Div yield #{i+1}", value=0.00, step=0.005, format="%.3f", key=f"q_{i}"))
                 else:
                     q_list.append(0.0)
             
@@ -435,14 +379,12 @@ def main():
             sigma = np.array(sigma_list)
             q = np.array(q_list)
             
-            # Build correlation matrix
             n_assets_int = int(n_assets)
             corr = np.eye(n_assets_int)
             
-            # Only show correlation inputs if more than 1 asset
             if n_assets_int > 1:
                 st.subheader("Correlations")
-                st.caption("Enter correlation between assets (values between -1 and 1)")
+                st.caption("Correlation between assets (-1 to 1)")
                 
                 for i in range(n_assets_int):
                     for j in range(i + 1, n_assets_int):
@@ -453,14 +395,18 @@ def main():
                             value=0.0,
                             step=0.1,
                             format="%.2f",
-                            key=f"corr_{i}_{j}_{n_assets_int}"
+                            key=f"corr_{i}_{j}"
                         )
                         corr[i, j] = corr_val
                         corr[j, i] = corr_val
             
-            tickers = None  # No tickers in manual mode
+            tickers = None
     
-    # Basket weights
+    # Detect if basket_kind changed for weights
+    if basket_kind != st.session_state.prev_basket_kind:
+        st.session_state.prev_basket_kind = basket_kind
+        st.rerun()
+    
     weights = None
     if basket_kind == "weighted":
         with st.sidebar:
@@ -468,156 +414,103 @@ def main():
             w_list = []
             labels = tickers if tickers else [f"A{i+1}" for i in range(int(n_assets))]
             for i, lab in enumerate(labels):
-                w_list.append(st.number_input(
-                    f"Weight {lab}", 
-                    value=1.0, 
-                    step=0.1, 
-                    key=f"w_{i}"
-                ))
+                w_list.append(st.number_input(f"Weight {lab}", value=1.0, step=0.1, key=f"w_{i}"))
             weights = np.array(w_list)
     
-    # Simulation
     n_steps = int(round(T * steps_per_year))
     obs_idx = build_obs_idx(T, steps_per_year, int(obs_per_year))
     coupon_rate_per_obs = coupon_pa / int(obs_per_year)
     
-    with st.spinner("🔄 Running Monte Carlo simulation..."):
-        paths = simulate_correlated_gbm(
-            S0=S0,
-            r=r,
-            q=q,
-            sigma=sigma,
-            corr=corr,
-            T=T,
-            n_steps=n_steps,
-            n_sims=int(n_sims),
-            seed=int(seed),
-        )
+    try:
+        with st.spinner("🔄 Running Monte Carlo simulation..."):
+            paths = simulate_correlated_gbm(S0, r, q, sigma, corr, T, n_steps, int(n_sims), int(seed))
+            payoff, autocalled, autocall_obs = phoenix_payoff(
+                paths, S0, nominal, obs_idx, coupon_rate_per_obs,
+                coupon_trigger, call_trigger, barrier, basket_kind, weights, memory
+            )
         
-        payoff, autocalled, autocall_obs = phoenix_payoff(
-            paths=paths,
-            S0=S0,
-            nominal=nominal,
-            obs_idx=obs_idx,
-            coupon_rate_per_obs=coupon_rate_per_obs,
-            coupon_trigger=coupon_trigger,
-            call_trigger=call_trigger,
-            barrier=barrier,
-            basket_kind=basket_kind,
-            weights=weights,
-            memory=memory,
-        )
+        metrics_df = summarize_metrics(payoff, autocalled, autocall_obs, int(obs_per_year))
+        
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            st.subheader("📊 Input Summary")
+            labels = tickers if tickers else [f"A{i+1}" for i in range(len(S0))]
+            df_params = pd.DataFrame({"S0": S0, "Volatility": sigma, "Div Yield": q}, index=labels)
+            st.dataframe(df_params, width=600)
+            
+            st.caption("**Correlation Matrix**")
+            st.dataframe(pd.DataFrame(corr, index=labels, columns=labels).round(3), width=600)
+            
+            st.subheader("📈 Key Metrics")
+            st.dataframe(metrics_df, width=600)
+            
+            out_df = pd.DataFrame({"payoff": payoff, "autocalled": autocalled.astype(int), "autocall_obs": autocall_obs})
+            csv = out_df.to_csv(index=False)
+            st.download_button("⬇️ Download Results (CSV)", data=csv, file_name="autocall_simulation.csv", mime="text/csv")
+        
+        with col2:
+            st.subheader("💰 Payoff Distribution")
+            fig1, ax1 = plt.subplots(figsize=(8, 4))
+            ax1.hist(payoff, bins=80, edgecolor='black', alpha=0.7, color='steelblue')
+            ax1.axvline(nominal, color='red', linestyle='--', linewidth=2, label=f'Nominal ({nominal:.0f})')
+            ax1.set_xlabel("Payoff")
+            ax1.set_ylabel("Frequency")
+            ax1.legend()
+            ax1.grid(True, alpha=0.3)
+            st.pyplot(fig1)
+            plt.close(fig1)
+            
+            st.subheader("⏱️ Autocall Timing")
+            calls = autocall_obs[autocall_obs >= 0]
+            fig2, ax2 = plt.subplots(figsize=(8, 4))
+            
+            if calls.size > 0:
+                ax2.hist(calls, bins=np.arange(-0.5, len(obs_idx) + 0.5, 1), edgecolor='black', alpha=0.7, color='coral')
+                ax2.set_xlabel("Observation Number")
+                ax2.set_ylabel("Count")
+                ax2.grid(True, alpha=0.3)
+            else:
+                ax2.text(0.5, 0.5, "No autocalls occurred", ha="center", va="center", fontsize=14, color='gray')
+                ax2.set_xlim(0, 1)
+                ax2.set_ylim(0, 1)
+                ax2.axis("off")
+            
+            st.pyplot(fig2)
+            plt.close(fig2)
+            
+            st.subheader("📉 Sample Paths (Basket Performance)")
+            paths3 = ensure_3d_paths(paths)
+            tgrid = np.linspace(0, T, n_steps + 1)
+            
+            fig3, ax3 = plt.subplots(figsize=(8, 5))
+            m = min(30, paths3.shape[0])
+            
+            for i in range(m):
+                ratio_line = basket_ratio(paths3[i, :, :], S0, kind=basket_kind, weights=weights)
+                ax3.plot(tgrid, ratio_line, linewidth=0.8, alpha=0.5, color='gray')
+            
+            ax3.axhline(coupon_trigger, linestyle='--', color='green', label=f'Coupon trigger ({coupon_trigger:.0%})', linewidth=2)
+            ax3.axhline(call_trigger, linestyle='--', color='blue', label=f'Autocall trigger ({call_trigger:.0%})', linewidth=2)
+            ax3.axhline(barrier, linestyle='--', color='red', label=f'Barrier ({barrier:.0%})', linewidth=2)
+            
+            ax3.set_xlabel("Time (years)")
+            ax3.set_ylabel("Basket Performance")
+            ax3.legend(loc='best')
+            ax3.grid(True, alpha=0.3)
+            st.pyplot(fig3)
+            plt.close(fig3)
+        
+        if px_preview is not None:
+            st.subheader("📊 Market Data Preview")
+            st.line_chart(px_preview)
+        
+        st.divider()
+        st.caption("⚠️ **Disclaimer**: Simplified Monte Carlo simulator using GBM. Real pricing uses implied vol surfaces, dividend curves, and calibrated rate curves.")
     
-    metrics_df = summarize_metrics(payoff, autocalled, autocall_obs, int(obs_per_year))
-    
-    # Output
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        st.subheader("📊 Input Summary")
-        labels = tickers if tickers else [f"A{i+1}" for i in range(len(S0))]
-        df_params = pd.DataFrame({
-            "S0": S0,
-            "Volatility": sigma,
-            "Div Yield": q
-        }, index=labels)
-        st.dataframe(df_params, width=600)
-        
-        st.caption("**Correlation Matrix**")
-        st.dataframe(
-            pd.DataFrame(corr, index=labels, columns=labels).round(3),
-            width=600
-        )
-        
-        st.subheader("📈 Key Metrics")
-        st.dataframe(metrics_df, width=600)
-        
-        # Download
-        out_df = pd.DataFrame({
-            "payoff": payoff,
-            "autocalled": autocalled.astype(int),
-            "autocall_obs": autocall_obs,
-        })
-        
-        csv = out_df.to_csv(index=False)
-        st.download_button(
-            "⬇️ Download Results (CSV)",
-            data=csv,
-            file_name="autocall_simulation.csv",
-            mime="text/csv",
-        )
-    
-    with col2:
-        # Payoff distribution
-        st.subheader("💰 Payoff Distribution")
-        fig1, ax1 = plt.subplots(figsize=(8, 4))
-        ax1.hist(payoff, bins=80, edgecolor='black', alpha=0.7, color='steelblue')
-        ax1.axvline(nominal, color='red', linestyle='--', linewidth=2, label=f'Nominal ({nominal:.0f})')
-        ax1.set_xlabel("Payoff")
-        ax1.set_ylabel("Frequency")
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        st.pyplot(fig1)
-        plt.close(fig1)
-        
-        # Autocall timing
-        st.subheader("⏱️ Autocall Timing")
-        calls = autocall_obs[autocall_obs >= 0]
-        fig2, ax2 = plt.subplots(figsize=(8, 4))
-        
-        if calls.size > 0:
-            ax2.hist(calls, bins=np.arange(-0.5, len(obs_idx) + 0.5, 1), 
-                    edgecolor='black', alpha=0.7, color='coral')
-            ax2.set_xlabel("Observation Number")
-            ax2.set_ylabel("Count")
-            ax2.grid(True, alpha=0.3)
-        else:
-            ax2.text(0.5, 0.5, "No autocalls occurred", 
-                    ha="center", va="center", fontsize=14, color='gray')
-            ax2.set_xlim(0, 1)
-            ax2.set_ylim(0, 1)
-            ax2.axis("off")
-        
-        st.pyplot(fig2)
-        plt.close(fig2)
-        
-        # Sample paths
-        st.subheader("📉 Sample Paths (Basket Performance)")
-        paths3 = ensure_3d_paths(paths)
-        tgrid = np.linspace(0, T, n_steps + 1)
-        
-        fig3, ax3 = plt.subplots(figsize=(8, 5))
-        m = min(30, paths3.shape[0])
-        
-        for i in range(m):
-            ratio_line = basket_ratio(paths3[i, :, :], S0, kind=basket_kind, weights=weights)
-            ax3.plot(tgrid, ratio_line, linewidth=0.8, alpha=0.5, color='gray')
-        
-        ax3.axhline(coupon_trigger, linestyle='--', color='green', 
-                   label=f'Coupon trigger ({coupon_trigger:.0%})', linewidth=2)
-        ax3.axhline(call_trigger, linestyle='--', color='blue', 
-                   label=f'Autocall trigger ({call_trigger:.0%})', linewidth=2)
-        ax3.axhline(barrier, linestyle='--', color='red', 
-                   label=f'Barrier ({barrier:.0%})', linewidth=2)
-        
-        ax3.set_xlabel("Time (years)")
-        ax3.set_ylabel("Basket Performance")
-        ax3.legend(loc='best')
-        ax3.grid(True, alpha=0.3)
-        st.pyplot(fig3)
-        plt.close(fig3)
-    
-    # Market data preview
-    if px_preview is not None:
-        st.subheader("📊 Market Data Preview")
-        st.line_chart(px_preview)
-    
-    # Footer
-    st.divider()
-    st.caption(
-        "⚠️ **Disclaimer**: This is a simplified Monte Carlo simulator using GBM. "
-        "Real pricing uses implied volatility surfaces, dividend forecasts, and calibrated curves."
-    )
+    except Exception as e:
+        st.error(f"❌ Simulation error: {str(e)}")
+        st.stop()
 
 
 if __name__ == "__main__":
