@@ -1,11 +1,14 @@
-
+"""
+Autocall Athena Pricer - Phoenix Structure
+A Streamlit application for pricing autocallable structured products
+"""
 
 import numpy as np
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 import yfinance as yf
-from typing import Tuple
+from typing import Tuple, Optional
 
 # ----------------------------
 # NUMERICAL UTILITIES
@@ -102,7 +105,7 @@ def basket_ratio(
     St_t: np.ndarray, 
     S0: np.ndarray, 
     kind: str = "worst-of", 
-    weights: np.ndarray = None
+    weights: Optional[np.ndarray] = None
 ) -> np.ndarray:
     """
     Calculate basket performance ratio.
@@ -159,7 +162,7 @@ def phoenix_payoff(
     call_trigger: float,
     barrier: float,
     basket_kind: str = "worst-of",
-    weights: np.ndarray = None,
+    weights: Optional[np.ndarray] = None,
     memory: bool = True,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
@@ -259,33 +262,41 @@ def fetch_market_params(
     lookback_years: int
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, pd.DataFrame]:
     """Fetch market data from Yahoo Finance."""
-    end = pd.Timestamp.today()
-    start = end - pd.DateOffset(years=lookback_years)
-    
-    data = yf.download(
-        tickers, 
-        start=start, 
-        end=end, 
-        auto_adjust=True, 
-        progress=False
-    )
-    
-    if len(tickers) == 1:
-        px = data['Close'].to_frame(tickers[0])
-    else:
-        px = data['Close']
-    
-    px = px.dropna()
-    
-    if px.empty or px.shape[1] == 0:
-        raise ValueError("No valid price data returned")
-    
-    rets = px.pct_change().dropna()
-    S0 = px.iloc[-1].values
-    sigma = rets.std().values * np.sqrt(252)
-    corr = rets.corr().values
-    
-    return S0, sigma, corr, px
+    try:
+        end = pd.Timestamp.today()
+        start = end - pd.DateOffset(years=lookback_years)
+        
+        # Download data
+        data = yf.download(
+            tickers, 
+            start=start, 
+            end=end, 
+            auto_adjust=True, 
+            progress=False
+        )
+        
+        # Handle single vs multiple tickers
+        if len(tickers) == 1:
+            px = data['Close'].to_frame(tickers[0])
+        else:
+            px = data['Close']
+        
+        # Clean data
+        px = px.dropna()
+        
+        if px.empty or px.shape[1] == 0:
+            raise ValueError("No valid price data returned. Check tickers.")
+        
+        # Calculate parameters
+        rets = px.pct_change().dropna()
+        S0 = px.iloc[-1].values
+        sigma = rets.std().values * np.sqrt(252)
+        corr = rets.corr().values
+        
+        return S0, sigma, corr, px
+        
+    except Exception as e:
+        raise ValueError(f"Failed to fetch market data: {str(e)}")
 
 # ----------------------------
 # STREAMLIT UI
