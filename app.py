@@ -521,16 +521,16 @@ def main():
             "Volatility": sigma,
             "Div Yield": q
         }, index=labels)
-        st.dataframe(df_params, use_container_width=True)
+        st.dataframe(df_params, width=600)
         
         st.caption("**Correlation Matrix**")
         st.dataframe(
             pd.DataFrame(corr, index=labels, columns=labels).round(3),
-            use_container_width=True
+            width=600
         )
         
         st.subheader("📈 Key Metrics")
-        st.dataframe(metrics_df, use_container_width=True)
+        st.dataframe(metrics_df, width=600)
         
         # Download
         out_df = pd.DataFrame({
@@ -545,7 +545,6 @@ def main():
             data=csv,
             file_name="autocall_simulation.csv",
             mime="text/csv",
-            use_container_width=True,
         )
     
     with col2:
