@@ -1,57 +1,54 @@
-"""
-Autocall Athena Pricer - Phoenix Structure
-A Streamlit application for pricing autocallable structured products
-"""
+# app.py
+# Structured Products Simulator (Phoenix) - robust Streamlit Cloud version
+# - Inputs always defined first
+# - Simulation runs only when user clicks "Run simulation"
+# - Results stored in st.session_state to avoid recomputation on every rerun
 
+from __future__ import annotations
+from typing import Optional
 import numpy as np
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 import yfinance as yf
-from typing import Tuple, Optional
+
 
 # ----------------------------
-# NUMERICAL UTILITIES
+# Utils
 # ----------------------------
-
 def ensure_3d_paths(paths: np.ndarray) -> np.ndarray:
-    """Ensure paths are in shape (n_sims, n_steps+1, n_assets)."""
-    paths = np.asarray(paths, dtype=float)
+    paths = np.asarray(paths, float)
     if paths.ndim == 2:
-        return paths[:, :, np.newaxis]
+        return paths[:, :, None]
     return paths
 
 
 def nearest_psd_corr(mat: np.ndarray, eps: float = 1e-10) -> np.ndarray:
-    """Project a symmetric matrix to a PSD correlation matrix via eigenvalue clipping."""
-    A = np.asarray(mat, dtype=float)
+    A = np.asarray(mat, float)
     A = 0.5 * (A + A.T)
     np.fill_diagonal(A, 1.0)
 
     vals, vecs = np.linalg.eigh(A)
-    vals = np.maximum(vals, eps)
+    vals = np.clip(vals, eps, None)
     B = vecs @ np.diag(vals) @ vecs.T
     B = 0.5 * (B + B.T)
 
-    # Re-normalize diagonal to 1
-    d = np.sqrt(np.maximum(np.diag(B), eps))
-    C = B / np.outer(d, d)
+    d = np.sqrt(np.clip(np.diag(B), eps, None))
+    C = B / (d[:, None] * d[None, :])
     np.fill_diagonal(C, 1.0)
     return 0.5 * (C + C.T)
 
 
 def cholesky_safe(corr: np.ndarray) -> np.ndarray:
-    """Cholesky decomposition with PSD fallback."""
     try:
         return np.linalg.cholesky(corr)
     except np.linalg.LinAlgError:
-        corr_psd = nearest_psd_corr(corr)
-        return np.linalg.cholesky(corr_psd)
+        return np.linalg.cholesky(nearest_psd_corr(corr))
+
 
 # ----------------------------
-# MARKET MODEL
+# Market model: correlated GBM
 # ----------------------------
-
 def simulate_correlated_gbm(
     S0: np.ndarray,
     r: float,
@@ -63,95 +60,65 @@ def simulate_correlated_gbm(
     n_sims: int,
     seed: int = 42,
 ) -> np.ndarray:
-    """
-    Simulate correlated GBM paths under risk-neutral measure.
-    
-    Returns:
-        paths: np.ndarray of shape (n_sims, n_steps+1, n_assets)
-    """
-    rng = np.random.default_rng(seed)
-    
-    S0 = np.asarray(S0, dtype=float)
-    q = np.asarray(q, dtype=float)
-    sigma = np.asarray(sigma, dtype=float)
-    
+    rng = np.random.default_rng(int(seed))
+
+    S0 = np.asarray(S0, float)
+    q = np.asarray(q, float)
+    sigma = np.asarray(sigma, float)
+    corr = np.asarray(corr, float)
+
     n_assets = S0.size
     dt = T / n_steps
-    
+
     L = cholesky_safe(corr)
-    
-    # Generate correlated normal increments
+
     Z = rng.standard_normal((n_sims, n_steps, n_assets))
     dW = Z @ L.T
-    
-    # GBM: dS = (r-q)S dt + sigma S dW
+
     drift = (r - q - 0.5 * sigma**2) * dt
-    diffusion = sigma * np.sqrt(dt) * dW
-    
-    log_increments = drift[np.newaxis, np.newaxis, :] + diffusion
+    diff = sigma * np.sqrt(dt) * dW
+
+    log_increments = drift[None, None, :] + diff
     log_paths = np.cumsum(log_increments, axis=1)
-    
+
     paths = np.empty((n_sims, n_steps + 1, n_assets))
     paths[:, 0, :] = S0
-    paths[:, 1:, :] = S0[np.newaxis, np.newaxis, :] * np.exp(log_paths)
-    
+    paths[:, 1:, :] = S0[None, None, :] * np.exp(log_paths)
     return paths
 
-# ----------------------------
-# BASKET MECHANICS
-# ----------------------------
 
-def basket_ratio(
-    St_t: np.ndarray, 
-    S0: np.ndarray, 
-    kind: str = "worst-of", 
-    weights: Optional[np.ndarray] = None
-) -> np.ndarray:
-    """
-    Calculate basket performance ratio.
-    
-    Args:
-        St_t: (n_sims, n_assets) current prices
-        S0: (n_assets,) initial prices
-        kind: basket type
-        weights: optional weights for weighted basket
-        
-    Returns:
-        ratio: (n_sims,) basket performance
-    """
-    S0 = np.asarray(S0, dtype=float)
-    R = St_t / S0[np.newaxis, :]
-    
+# ----------------------------
+# Basket
+# ----------------------------
+def basket_ratio(St_t: np.ndarray, S0: np.ndarray, kind: str = "worst-of", weights=None) -> np.ndarray:
+    S0 = np.asarray(S0, float)
+    R = St_t / S0[None, :]
+
     kind = kind.lower()
-    
     if kind == "worst-of":
         return np.min(R, axis=1)
-    elif kind == "best-of":
+    if kind == "best-of":
         return np.max(R, axis=1)
-    elif kind == "average":
+    if kind == "average":
         return np.mean(R, axis=1)
-    elif kind == "weighted":
-        if weights is None:
-            raise ValueError("weights required for weighted basket")
-        w = np.asarray(weights, dtype=float)
+    if kind == "weighted":
+        w = np.asarray(weights, float)
         w = w / np.sum(w)
         return R @ w
-    else:
-        raise ValueError(f"Unknown basket kind: {kind}")
+
+    raise ValueError("kind must be: worst-of / best-of / average / weighted")
 
 
 def build_obs_idx(T: float, steps_per_year: int, obs_per_year: int) -> np.ndarray:
-    """Build observation step indices."""
     n_steps = int(round(T * steps_per_year))
-    obs_step = max(1, int(round(steps_per_year / obs_per_year)))
+    obs_step = int(round(steps_per_year / obs_per_year))
     obs_idx = np.arange(obs_step, n_steps + 1, obs_step, dtype=int)
-    obs_idx = obs_idx[obs_idx <= n_steps]
-    return obs_idx
+    return obs_idx[obs_idx <= n_steps]
+
 
 # ----------------------------
-# PRODUCT PAYOFF
+# Phoenix payoff
 # ----------------------------
-
 def phoenix_payoff(
     paths: np.ndarray,
     S0: np.ndarray,
@@ -162,434 +129,649 @@ def phoenix_payoff(
     call_trigger: float,
     barrier: float,
     basket_kind: str = "worst-of",
-    weights: Optional[np.ndarray] = None,
+    weights=None,
     memory: bool = True,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    # ---- PRICING PARAMS (NEW) ----
+    r: float = 0.0,
+    steps_per_year: int = 252,
+    T: Optional[float] = None,  # if None, inferred from paths,   # if None, inferred from paths
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Phoenix autocall payoff calculator.
-    
-    Returns:
-        payoff: (n_sims,) total payoff
-        autocalled: (n_sims,) boolean autocall flag
-        autocall_obs: (n_sims,) observation index of autocall (-1 if not called)
+    Returns discounted PV per simulation (price paths already simulated under Q).
+    PV = sum_k DF(t_k)*CF(t_k) + DF(T)*CF(T)
     """
     paths = ensure_3d_paths(paths)
-    n_sims, _, n_assets = paths.shape
-    
-    S0 = np.asarray(S0, dtype=float)
+    n_sims, n_steps_plus1, n_assets = paths.shape
+
+    S0 = np.asarray(S0, float)
     if S0.ndim == 0:
         S0 = np.array([float(S0)])
     if S0.size != n_assets:
-        raise ValueError(f"S0 size ({S0.size}) must match n_assets ({n_assets})")
-    
-    payoff = np.zeros(n_sims)
+        raise ValueError("S0 must match number of assets in paths.")
+
+    # infer maturity if not provided
+    if T is None:
+        n_steps = n_steps_plus1 - 1
+        T = n_steps / float(steps_per_year)
+
+    pv = np.zeros(n_sims)  # discounted payoff
     autocalled = np.zeros(n_sims, dtype=bool)
     autocall_obs = np.full(n_sims, -1, dtype=int)
-    accrued = np.zeros(n_sims)
-    
-    for k, t in enumerate(obs_idx):
+
+    accrued = np.zeros(n_sims)  # undiscounted accrued coupon amount (for memory)
+
+    for k, step in enumerate(obs_idx):
         alive = ~autocalled
         if not np.any(alive):
             break
-        
-        St = paths[alive, t, :]
-        ratio = basket_ratio(St, S0, kind=basket_kind, weights=weights)
-        
-        # Coupon logic
+
+        time = step / float(steps_per_year)
+        df = np.exp(-float(r) * float(time))
+
+        ratio = basket_ratio(paths[alive, step, :], S0, kind=basket_kind, weights=weights)
+
+        # ---- Coupons (paid at this observation date, discounted by df) ----
         coupon_ok = ratio >= coupon_trigger
-        
+
         if memory:
+            # accrue one coupon for alive paths (undiscounted amount)
             accrued_alive = accrued[alive] + nominal * coupon_rate_per_obs
-            payoff[alive] += accrued_alive * coupon_ok
+            # if coupon condition met, pay all accrued now (discounted)
+            pv[alive] += (accrued_alive * coupon_ok) * df
+            # if not met, keep it in memory
             accrued[alive] = accrued_alive * (~coupon_ok)
         else:
-            payoff[alive] += (nominal * coupon_rate_per_obs) * coupon_ok
-        
-        # Autocall logic
+            pv[alive] += (nominal * coupon_rate_per_obs) * coupon_ok * df
+
+        # ---- Autocall (nominal paid at this observation date, discounted by df) ----
         call_ok = ratio >= call_trigger
         idx_alive = np.where(alive)[0]
         called_idx = idx_alive[call_ok]
-        
-        if called_idx.size > 0:
+        if called_idx.size:
             autocalled[called_idx] = True
             autocall_obs[called_idx] = k
-            payoff[called_idx] += nominal
-    
-    # Maturity payoff for non-autocalled
+            pv[called_idx] += nominal * df  # discount nominal repayment at call date
+
+    # ---- Maturity cashflow (discounted at DF(T)) ----
     alive = ~autocalled
     if np.any(alive):
-        ST = paths[alive, -1, :]
-        ratio_T = basket_ratio(ST, S0, kind=basket_kind, weights=weights)
+        dfT = np.exp(-float(r) * float(T))
+        ratio_T = basket_ratio(paths[alive, -1, :], S0, kind=basket_kind, weights=weights)
         protected = ratio_T >= barrier
-        payoff[alive] += np.where(protected, nominal, nominal * ratio_T)
-    
-    return payoff, autocalled, autocall_obs
+        maturity_cf = np.where(protected, nominal, nominal * ratio_T)
+        pv[alive] += maturity_cf * dfT
+
+    return pv, autocalled, autocall_obs
+
 
 # ----------------------------
-# METRICS
+# Metrics
 # ----------------------------
+def summarize_metrics(payoff: np.ndarray, autocalled: np.ndarray, autocall_obs: np.ndarray, obs_per_year: int) -> pd.DataFrame:
+    payoff = np.asarray(payoff, float)
+    autocalled = np.asarray(autocalled, bool)
 
-def summarize_metrics(
-    payoff: np.ndarray, 
-    autocalled: np.ndarray, 
-    autocall_obs: np.ndarray, 
-    obs_per_year: int
-) -> pd.DataFrame:
-    """Generate summary statistics."""
-    metrics = {
-        "Expected payoff": float(np.mean(payoff)),
+    out = {
+        "Estimated price (PV)": float(np.mean(payoff)),
         "Median payoff": float(np.median(payoff)),
         "P(Autocall)": float(np.mean(autocalled)),
         "5% quantile": float(np.quantile(payoff, 0.05)),
         "1% quantile": float(np.quantile(payoff, 0.01)),
-    }
-    
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "id": "bf7a9bd9",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "2026-03-04 14:15:45.201 No runtime found, using MemoryCacheStorageManager\n",
+      "2026-03-04 14:15:45.204 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.209 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.211 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.216 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.218 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.221 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.223 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.224 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.225 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.226 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.227 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.228 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.229 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.230 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.231 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.233 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.234 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.235 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.237 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.238 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.238 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.240 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.242 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.242 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.244 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.246 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.247 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.248 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.250 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.252 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.253 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.256 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.258 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.261 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.262 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.264 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.265 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.266 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.270 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.271 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.271 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.272 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.275 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.276 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.276 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.280 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.280 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.281 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.283 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.289 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.289 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.291 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.292 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.293 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.294 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.294 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.295 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.297 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.297 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.298 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.299 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.299 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.300 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.301 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.301 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.302 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.303 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.303 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.304 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.306 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.306 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.307 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.307 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.308 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.308 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.309 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.310 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.310 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.311 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.312 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.312 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.312 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.313 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.314 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.314 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.315 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.316 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.316 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.316 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.317 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.318 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.318 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.319 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.319 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.320 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.320 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.321 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.322 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.322 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.323 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.323 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.324 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.324 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.325 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.325 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.326 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.327 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.327 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.328 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.328 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.329 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.330 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.330 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.330 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.331 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.332 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.332 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.333 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.333 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.334 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.335 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.338 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.340 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.341 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.341 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.342 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.342 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.343 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.344 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.344 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.345 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.345 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.345 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.346 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.347 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.348 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.348 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.348 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.349 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.349 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.350 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.351 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.351 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.352 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.352 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.352 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.354 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.354 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.354 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.355 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.355 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.356 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.356 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.357 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.358 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.358 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.359 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.359 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.360 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.360 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.360 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.362 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.362 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.362 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.363 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.363 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.364 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.364 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.365 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.366 Please replace `use_container_width` with `width`.\n",
+      "\n",
+      "`use_container_width` will be removed after 2025-12-31.\n",
+      "\n",
+      "For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.\n",
+      "2026-03-04 14:15:45.369 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.372 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.374 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.377 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.379 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:45.381 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.194 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.195 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.196 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.197 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.197 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.198 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.199 Please replace `use_container_width` with `width`.\n",
+      "\n",
+      "`use_container_width` will be removed after 2025-12-31.\n",
+      "\n",
+      "For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.\n",
+      "2026-03-04 14:15:50.201 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.201 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.202 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.202 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.203 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.203 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.204 Please replace `use_container_width` with `width`.\n",
+      "\n",
+      "`use_container_width` will be removed after 2025-12-31.\n",
+      "\n",
+      "For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.\n",
+      "2026-03-04 14:15:50.206 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.206 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.207 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.207 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.208 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.209 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.209 Please replace `use_container_width` with `width`.\n",
+      "\n",
+      "`use_container_width` will be removed after 2025-12-31.\n",
+      "\n",
+      "For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.\n",
+      "2026-03-04 14:15:50.211 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.212 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.212 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.249 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.250 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.251 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.251 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.252 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.253 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.254 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.255 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.256 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.256 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.306 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.422 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.423 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.423 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.424 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.425 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.425 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.440 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.535 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.536 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.537 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.537 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.538 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.538 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.566 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.751 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.752 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.753 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.754 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.755 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n",
+      "2026-03-04 14:15:50.755 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "DeltaGenerator()"
+      ]
+     },
+     "execution_count": 12,
+     "metadata": {},
+     "output_type": "execute_result"
+}
     calls = autocall_obs[autocall_obs >= 0]
-    if calls.size > 0:
-        metrics["Expected autocall time (years)"] = float(np.mean((calls + 1) / obs_per_year))
-    else:
-        metrics["Expected autocall time (years)"] = float('nan')
-    
-    return pd.DataFrame(metrics, index=["Value"]).T
+    out["Expected autocall time (years)"] = float(np.mean((calls + 1) / obs_per_year)) if calls.size else np.nan
+    return pd.DataFrame(out, index=["Value"]).T
+
 
 # ----------------------------
-# MARKET DATA
+# Market data
 # ----------------------------
-
 @st.cache_data(show_spinner=False)
-def fetch_market_params(
-    tickers: list, 
-    lookback_years: int
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, pd.DataFrame]:
-    """Fetch market data from Yahoo Finance."""
-    try:
-        end = pd.Timestamp.today()
-        start = end - pd.DateOffset(years=lookback_years)
-        
-        # Download data
-        data = yf.download(
-            tickers, 
-            start=start, 
-            end=end, 
-            auto_adjust=True, 
-            progress=False
-        )
-        
-        # Handle single vs multiple tickers
-        if len(tickers) == 1:
-            px = data['Close'].to_frame(tickers[0])
-        else:
-            px = data['Close']
-        
-        # Clean data
-        px = px.dropna()
-        
-        if px.empty or px.shape[1] == 0:
-            raise ValueError("No valid price data returned. Check tickers.")
-        
-        # Calculate parameters
-        rets = px.pct_change().dropna()
-        S0 = px.iloc[-1].values
-        sigma = rets.std().values * np.sqrt(252)
-        corr = rets.corr().values
-        
-        return S0, sigma, corr, px
-        
-    except Exception as e:
-        raise ValueError(f"Failed to fetch market data: {str(e)}")
+def fetch_market_params(tickers: list[str], lookback_years: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, pd.DataFrame]:
+    end = pd.Timestamp.today().tz_localize(None)
+    start = end - pd.DateOffset(years=int(lookback_years))
+
+    df = yf.download(tickers, start=start, end=end, auto_adjust=True, progress=False)
+
+    if isinstance(df.columns, pd.MultiIndex):
+        px = df["Close"] if "Close" in df.columns.get_level_values(0) else df["Adj Close"]
+    else:
+        px = df["Close"] if "Close" in df.columns else df
+
+    if isinstance(px, pd.Series):
+        px = px.to_frame()
+
+    px = px.dropna(how="all").dropna(axis=1, how="any")
+    if px.shape[1] == 0:
+        raise ValueError("No usable price data returned (check tickers and lookback).")
+
+    rets = px.pct_change().dropna()
+    S0 = px.iloc[-1].values
+    sigma = rets.std().values * np.sqrt(252)
+    corr = rets.corr().values
+    return S0, sigma, corr, px
+
 
 # ----------------------------
-# STREAMLIT UI
+# Streamlit UI
 # ----------------------------
+st.set_page_config(page_title="Structured Products Simulator made by Youssef Triki", layout="wide")
+st.title("Structured Products Simulator (Phoenix) made by Youssef Triki")
 
-def main():
-    st.set_page_config(page_title="Autocall Athena Pricer", layout="wide")
-    st.title("🏛️ Autocall Athena Pricer — Phoenix Structure")
-    
-    # Sidebar controls
-    with st.sidebar:
-        st.header("📊 Mode")
-        mode = st.radio(
-            "Parameter source", 
-            ["Manual parameters", "Market data (Yahoo Finance)"],
-            index=0
-        )
-        
-        st.header("📋 Product Structure")
-        nominal = st.number_input("Nominal", min_value=1.0, value=1000.0, step=100.0)
-        T = st.number_input("Maturity (years)", min_value=0.25, value=3.0, step=0.25)
-        steps_per_year = st.selectbox("Simulation steps/year", [252, 52, 12], index=0)
-        obs_per_year = st.selectbox("Observation frequency/year", [12, 4, 2, 1], index=1)
-        
-        coupon_pa = st.number_input("Coupon p.a.", min_value=0.0, value=0.10, step=0.01, format="%.2f")
-        coupon_trigger = st.number_input("Coupon trigger", min_value=0.0, max_value=2.0, value=0.70, step=0.01)
-        call_trigger = st.number_input("Autocall trigger", min_value=0.0, max_value=2.0, value=1.00, step=0.01)
-        barrier = st.number_input("Maturity barrier", min_value=0.0, max_value=2.0, value=0.60, step=0.01)
-        memory = st.checkbox("Memory coupon", value=True)
-        
-        st.header("🧺 Basket")
-        basket_kind = st.selectbox("Basket type", ["worst-of", "best-of", "average", "weighted"], index=0)
-        
-        st.header("💹 Rates")
-        r = st.number_input("Risk-free rate", value=0.02, step=0.005, format="%.3f")
-        use_q = st.checkbox("Set dividend yields", value=False)
-        
-        st.header("🎲 Monte Carlo")
-        n_sims = st.slider("Simulations", 5000, 120000, 30000, step=5000)
-        seed = st.number_input("Random seed", value=42, step=1)
-    
-    # Asset parameters
-    tickers = None
+if "results" not in st.session_state:
+    st.session_state["results"] = None
+
+with st.sidebar:
+    st.header("Mode")
+    mode = st.radio("Parameter source", ["Manual parameters", "Market data (Yahoo Finance)"], index=0)
+
+    st.header("Product")
+    nominal = st.number_input("Nominal", min_value=1.0, value=1000.0, step=100.0)
+    T = st.number_input("Maturity (years)", min_value=0.25, value=3.0, step=0.25)
+    steps_per_year = st.selectbox("Simulation steps/year", [252, 52, 12], index=0)
+    obs_per_year = st.selectbox("Observation frequency/year", [12, 4, 2, 1], index=1)
+
+    coupon_pa_pct = st.number_input("Coupon p.a. (%)", min_value=0.0, value=10.0, step=0.5)
+    coupon_pa = coupon_pa_pct / 100
+    coupon_trigger = st.number_input("Coupon trigger (ratio)", min_value=0.0, max_value=2.0, value=0.70, step=0.01)
+    call_trigger = st.number_input("Autocall trigger (ratio)", min_value=0.0, max_value=2.0, value=1.00, step=0.01)
+    barrier = st.number_input("Maturity barrier (ratio)", min_value=0.0, max_value=2.0, value=0.60, step=0.01)
+    memory = st.checkbox("Memory coupon", value=True)
+
+    st.header("Basket")
+    basket_kind = st.selectbox("Basket type", ["worst-of", "best-of", "average", "weighted"], index=0)
+
+    st.header("Rates / Dividends")
+    r = st.number_input("Risk-free rate r", value=0.02, step=0.005)
+    use_q = st.checkbox("Set dividend yields q", value=False)
+
+    st.header("Monte Carlo")
+    # keep cloud-safe
+    n_sims = st.slider("Number of simulations", 2000, 60000, 20000, step=1000)
+    seed = st.number_input("Random seed", value=42, step=1)
+
+    # Mode-specific inputs (still defined BEFORE running)
     px_preview = None
-    
+    tickers = None
+    lookback_years = None
+
     if mode == "Market data (Yahoo Finance)":
-        with st.sidebar:
-            st.subheader("Market Settings")
-            tickers_str = st.text_input("Tickers (comma-separated)", value="AAPL,MSFT")
-            lookback_years = st.slider("Lookback (years)", 1, 10, 3)
-        
+        st.subheader("Market data settings")
+        tickers_str = st.text_input("Tickers (comma-separated)", value="AAPL,MSFT")
+        lookback_years = st.slider("Lookback (years)", 1, 10, 3)
         tickers = [t.strip().upper() for t in tickers_str.split(",") if t.strip()]
-        
-        if not tickers:
-            st.error("⚠️ Please enter at least 1 ticker")
-            st.stop()
-        
-        try:
-            with st.spinner("📡 Fetching market data..."):
-                S0, sigma, corr, px_preview = fetch_market_params(tickers, lookback_years)
-            n_assets = len(S0)
-            q = np.zeros(n_assets)
-            
+
+    else:
+        st.subheader("Manual asset settings")
+        n_assets = st.number_input("Number of underlyings", min_value=1, max_value=5, value=2, step=1)
+
+        S0_list, sigma_list, q_list = [], [], []
+        for i in range(int(n_assets)):
+            st.markdown(f"**Asset {i+1}**")
+            S0_list.append(st.number_input(f"S0 {i+1}", value=100.0, step=1.0, key=f"S0_{i}"))
+            sigma_list.append(st.number_input(f"Vol (sigma) {i+1}", value=0.25, step=0.01, key=f"sig_{i}"))
             if use_q:
-                with st.sidebar:
-                    st.subheader("Dividend Yields")
-                    q_list = []
-                    for i, ticker in enumerate(tickers):
-                        q_list.append(st.number_input(
-                            f"q {ticker}", 
-                            value=0.00, 
-                            step=0.005, 
-                            format="%.3f",
-                            key=f"q_m_{i}"
-                        ))
-                    q = np.array(q_list)
-        
-        except Exception as e:
-            st.error(f"❌ Market data error: {str(e)}")
-            st.stop()
-    
-    else:  # Manual mode
-        with st.sidebar:
-            st.subheader("Asset Parameters")
-            n_assets = st.number_input("Number of underlyings", min_value=1, max_value=5, value=2, step=1)
-            
-            S0_list, sigma_list, q_list = [], [], []
-            
-            for i in range(int(n_assets)):
-                st.markdown(f"**Asset {i+1}**")
-                S0_list.append(st.number_input(
-                    f"S0 #{i+1}", 
-                    value=100.0, 
-                    step=1.0, 
-                    key=f"S0_{i}"
-                ))
-                sigma_list.append(st.number_input(
-                    f"Volatility #{i+1}", 
-                    value=0.25, 
-                    step=0.01, 
-                    format="%.2f",
-                    key=f"sig_{i}"
-                ))
-                if use_q:
-                    q_list.append(st.number_input(
-                        f"Div yield #{i+1}", 
-                        value=0.00, 
-                        step=0.005,
-                        format="%.3f",
-                        key=f"q_{i}"
-                    ))
-                else:
-                    q_list.append(0.0)
-            
-            S0 = np.array(S0_list)
-            sigma = np.array(sigma_list)
-            q = np.array(q_list)
-            
-            st.subheader("Correlation Matrix")
-            corr_df = pd.DataFrame(
-                np.eye(int(n_assets)),
-                index=[f"A{i+1}" for i in range(int(n_assets))],
-                columns=[f"A{i+1}" for i in range(int(n_assets))],
-            )
-            
-            edited_corr = st.data_editor(
-                corr_df,
-                use_container_width=True,
-                key="corr_editor",
-                hide_index=False
-            )
-            corr = edited_corr.to_numpy()
-    
-    # Basket weights
+                q_list.append(st.number_input(f"q {i+1}", value=0.00, step=0.005, key=f"q_{i}"))
+            else:
+                q_list.append(0.0)
+
+        S0_manual = np.array(S0_list, float)
+        sigma_manual = np.array(sigma_list, float)
+        q_manual = np.array(q_list, float)
+
+        st.subheader("Correlation matrix")
+        corr_df = pd.DataFrame(
+            np.eye(int(n_assets)),
+            index=[f"A{i+1}" for i in range(int(n_assets))],
+            columns=[f"A{i+1}" for i in range(int(n_assets))],
+        )
+        corr_df = st.data_editor(corr_df, width="stretch", key="corr_editor")
+        corr_manual = corr_df.to_numpy()
+
     weights = None
     if basket_kind == "weighted":
-        with st.sidebar:
-            st.subheader("Basket Weights")
-            w_list = []
-            labels = tickers if tickers else [f"A{i+1}" for i in range(int(n_assets))]
-            for i, lab in enumerate(labels):
-                w_list.append(st.number_input(
-                    f"Weight {lab}", 
-                    value=1.0, 
-                    step=0.1, 
-                    key=f"w_{i}"
-                ))
-            weights = np.array(w_list)
-    
-    # Simulation
-    n_steps = int(round(T * steps_per_year))
-    obs_idx = build_obs_idx(T, steps_per_year, int(obs_per_year))
-    coupon_rate_per_obs = coupon_pa / int(obs_per_year)
-    
-    with st.spinner("🔄 Running Monte Carlo simulation..."):
-        paths = simulate_correlated_gbm(
-            S0=S0,
-            r=r,
-            q=q,
-            sigma=sigma,
-            corr=corr,
-            T=T,
-            n_steps=n_steps,
-            n_sims=int(n_sims),
-            seed=int(seed),
-        )
-        
-        payoff, autocalled, autocall_obs = phoenix_payoff(
-            paths=paths,
-            S0=S0,
-            nominal=nominal,
-            obs_idx=obs_idx,
-            coupon_rate_per_obs=coupon_rate_per_obs,
-            coupon_trigger=coupon_trigger,
-            call_trigger=call_trigger,
-            barrier=barrier,
-            basket_kind=basket_kind,
-            weights=weights,
-            memory=memory,
-        )
-    
-    metrics_df = summarize_metrics(payoff, autocalled, autocall_obs, int(obs_per_year))
-    
-    # Output
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        st.subheader("📊 Input Summary")
-        labels = tickers if tickers else [f"A{i+1}" for i in range(len(S0))]
-        df_params = pd.DataFrame({
-            "S0": S0,
-            "Volatility": sigma,
-            "Div Yield": q
-        }, index=labels)
-        st.dataframe(df_params, use_container_width=True)
-        
-        st.caption("**Correlation Matrix**")
-        st.dataframe(
-            pd.DataFrame(corr, index=labels, columns=labels).round(3),
-            use_container_width=True
-        )
-        
-        st.subheader("📈 Key Metrics")
-        st.dataframe(metrics_df, use_container_width=True)
-        
-        # Download
-        out_df = pd.DataFrame({
-            "payoff": payoff,
-            "autocalled": autocalled.astype(int),
-            "autocall_obs": autocall_obs,
-        })
-        
-        csv = out_df.to_csv(index=False)
-        st.download_button(
-            "⬇️ Download Results (CSV)",
-            data=csv,
-            file_name="autocall_simulation.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-    
-    with col2:
-        # Payoff distribution
-        st.subheader("💰 Payoff Distribution")
-        fig1, ax1 = plt.subplots(figsize=(8, 4))
-        ax1.hist(payoff, bins=80, edgecolor='black', alpha=0.7, color='steelblue')
-        ax1.axvline(nominal, color='red', linestyle='--', linewidth=2, label=f'Nominal ({nominal})')
-        ax1.set_xlabel("Payoff")
-        ax1.set_ylabel("Frequency")
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        st.pyplot(fig1)
-        plt.close(fig1)
-        
-        # Autocall timing
-        st.subheader("⏱️ Autocall Timing")
-        calls = autocall_obs[autocall_obs >= 0]
-        fig2, ax2 = plt.subplots(figsize=(8, 4))
-        
-        if calls.size > 0:
-            ax2.hist(calls, bins=np.arange(-0.5, len(obs_idx) + 0.5, 1), 
-                    edgecolor='black', alpha=0.7, color='coral')
-            ax2.set_xlabel("Observation Number")
-            ax2.set_ylabel("Count")
-            ax2.grid(True, alpha=0.3)
+        st.subheader("Weights")
+        if mode == "Market data (Yahoo Finance)":
+            labels_for_w = tickers if tickers else ["A1"]
         else:
-            ax2.text(0.5, 0.5, "No autocalls occurred", 
-                    ha="center", va="center", fontsize=14, color='gray')
-            ax2.set_xlim(0, 1)
-            ax2.set_ylim(0, 1)
-            ax2.axis("off")
-        
-        st.pyplot(fig2)
-        plt.close(fig2)
-        
-        # Sample paths
-        st.subheader("📉 Sample Paths (Basket Performance)")
-        paths3 = ensure_3d_paths(paths)
-        tgrid = np.linspace(0, T, n_steps + 1)
-        
-        fig3, ax3 = plt.subplots(figsize=(8, 5))
-        m = min(30, paths3.shape[0])
-        
-        for i in range(m):
-            ratio_line = basket_ratio(paths3[i, :, :], S0, kind=basket_kind, weights=weights)
-            ax3.plot(tgrid, ratio_line, linewidth=0.8, alpha=0.5, color='gray')
-        
-        ax3.axhline(coupon_trigger, linestyle='--', color='green', 
-                   label=f'Coupon trigger ({coupon_trigger:.0%})', linewidth=2)
-        ax3.axhline(call_trigger, linestyle='--', color='blue', 
-                   label=f'Autocall trigger ({call_trigger:.0%})', linewidth=2)
-        ax3.axhline(barrier, linestyle='--', color='red', 
-                   label=f'Barrier ({barrier:.0%})', linewidth=2)
-        
-        ax3.set_xlabel("Time (years)")
-        ax3.set_ylabel("Basket Performance")
-        ax3.legend(loc='best')
-        ax3.grid(True, alpha=0.3)
-        st.pyplot(fig3)
-        plt.close(fig3)
-    
-    # Market data preview
-    if px_preview is not None:
-        st.subheader("📊 Market Data Preview")
-        st.line_chart(px_preview)
-    
-    # Footer
-    st.divider()
-    st.caption(
-        "⚠️ **Disclaimer**: This is a simplified Monte Carlo simulator using GBM. "
-        "Real pricing uses implied volatility surfaces, dividend forecasts, and calibrated curves."
+            labels_for_w = [f"A{i+1}" for i in range(int(n_assets))]
+        w_list = []
+        for i, lab in enumerate(labels_for_w):
+            w_list.append(st.number_input(f"Weight {lab}", value=1.0, step=0.1, key=f"w_{i}"))
+        weights = np.asarray(w_list, float)
+
+    run = st.button("Run simulation", type="primary")
+
+if run:
+    try:
+        if mode == "Market data (Yahoo Finance)":
+            if not tickers:
+                st.error("Please enter at least one ticker.")
+                st.stop()
+
+            S0, sigma, corr, px_preview = fetch_market_params(tickers, int(lookback_years))
+            q = np.zeros_like(S0)
+            if use_q:
+                # keep q = 0 for now in market mode unless you extend with inputs
+                pass
+            labels = tickers
+
+        else:
+            S0, sigma, corr, q = S0_manual, sigma_manual, corr_manual, q_manual
+            labels = [f"A{i+1}" for i in range(len(S0))]
+
+        n_steps = int(round(float(T) * int(steps_per_year)))
+        obs_idx = build_obs_idx(float(T), int(steps_per_year), int(obs_per_year))
+        coupon_rate_per_obs = float(coupon_pa) / int(obs_per_year)
+
+        with st.spinner("Simulating paths and pricing..."):
+            paths = simulate_correlated_gbm(
+                S0=S0,
+                r=float(r),
+                q=q,
+                sigma=sigma,
+                corr=corr,
+                T=float(T),
+                n_steps=n_steps,
+                n_sims=int(n_sims),
+                seed=int(seed),
+            )
+
+            payoff, autocalled, autocall_obs = phoenix_payoff(
+                paths=paths,S0=S0,nominal=float(nominal),obs_idx=obs_idx,coupon_rate_per_obs=float(coupon_rate_per_obs),
+                coupon_trigger=float(coupon_trigger),call_trigger=float(call_trigger),barrier=float(barrier),
+                basket_kind=basket_kind,weights=weights,memory=bool(memory),r=float(r),steps_per_year=int(steps_per_year),
+                T=float(T),
+
+            )
+
+            metrics_df = summarize_metrics(payoff, autocalled, autocall_obs, int(obs_per_year))
+
+        st.session_state["results"] = {
+            "labels": labels,
+            "S0": S0,
+            "sigma": sigma,
+            "q": q,
+            "corr": corr,
+            "payoff": payoff,
+            "autocalled": autocalled,
+            "autocall_obs": autocall_obs,
+            "metrics_df": metrics_df,
+            "paths": paths,
+            "obs_idx": obs_idx,
+            "n_steps": n_steps,
+            "T": float(T),
+            "basket_kind": basket_kind,
+            "weights": weights,
+            "coupon_trigger": float(coupon_trigger),
+            "call_trigger": float(call_trigger),
+            "barrier": float(barrier),
+            "px_preview": px_preview,
+        }
+
+    except Exception as e:
+        st.error(f"Run failed: {e}")
+        st.stop()
+
+res = st.session_state.get("results")
+if res is None:
+    st.info("Set parameters in the sidebar and click **Run simulation**.")
+    st.stop()
+
+labels = res["labels"]
+S0 = res["S0"]
+sigma = res["sigma"]
+q = res["q"]
+corr = res["corr"]
+payoff = res["payoff"]
+autocalled = res["autocalled"]
+autocall_obs = res["autocall_obs"]
+metrics_df = res["metrics_df"]
+paths = res["paths"]
+obs_idx = res["obs_idx"]
+n_steps = res["n_steps"]
+T_val = res["T"]
+basket_kind = res["basket_kind"]
+weights = res["weights"]
+coupon_trigger = res["coupon_trigger"]
+call_trigger = res["call_trigger"]
+barrier = res["barrier"]
+px_preview = res["px_preview"]
+
+col1, col2 = st.columns([1, 2])
+
+with col1:
+    st.subheader("Inputs (summary)")
+    st.dataframe(pd.DataFrame({"S0": S0, "sigma": sigma, "q": q}, index=labels), width="stretch")
+    st.caption("Correlation matrix used (may be adjusted to PSD internally).")
+    st.dataframe(pd.DataFrame(corr, index=labels, columns=labels), width="stretch")
+
+    st.subheader("Key metrics")
+    st.dataframe(metrics_df, width="stretch")
+
+    out_df = pd.DataFrame({"payoff": payoff, "autocalled": autocalled.astype(int), "autocall_obs": autocall_obs})
+    st.download_button(
+        "Download simulation results (CSV)",
+        data=out_df.to_csv(index=False),
+        file_name="simulation_results.csv",
+        mime="text/csv",
+        use_container_width=True,
     )
 
+with col2:
+    st.subheader("Payoff distribution")
+    fig = plt.figure()
+    plt.hist(payoff, bins=80)
+    plt.xlabel("Payoff")
+    plt.ylabel("Frequency")
+    st.pyplot(fig, clear_figure=True)
+
+    st.subheader("Autocall timing (observation number)")
+    calls = autocall_obs[autocall_obs >= 0]
+    fig2 = plt.figure()
+    if calls.size:
+        plt.hist(calls, bins=np.arange(0, len(obs_idx) + 1) - 0.5)
+        plt.xlabel("Observation number (0-based)")
+        plt.ylabel("Count")
+    else:
+        plt.text(0.5, 0.5, "No autocalls in this run.", ha="center", va="center")
+        plt.axis("off")
+    st.pyplot(fig2, clear_figure=True)
+
+    st.subheader("Sample paths (basket ratio, first 30 sims)")
+    paths3 = ensure_3d_paths(paths)
+    tgrid = np.linspace(0, float(T_val), n_steps + 1)
+    fig3 = plt.figure()
+    m = min(30, paths3.shape[0])
+    for i in range(m):
+        ratio_line = basket_ratio(paths3[i, :, :], S0, kind=basket_kind, weights=weights)
+        plt.plot(tgrid, ratio_line, linewidth=0.8)
+    plt.axhline(coupon_trigger, linestyle="--")
+    plt.axhline(call_trigger, linestyle="--")
+    plt.axhline(barrier, linestyle="--")
+    plt.xlabel("Time (years)")
+    plt.ylabel("Basket ratio")
+    st.pyplot(fig3, clear_figure=True)
+
+if px_preview is not None:
+    st.subheader("Market data preview (auto-adjusted close)")
+    st.line_chart(px_preview)
+
+st.caption(
+    "Notes: simplified GBM + historical vol/corr in market mode. "
+    "Desk pricing typically uses implied vol surfaces, dividend curves, and calibrated rate curves."
+)
 
 if __name__ == "__main__":
-    main()
+    pass
