@@ -435,21 +435,29 @@ def main():
             sigma = np.array(sigma_list)
             q = np.array(q_list)
             
-            st.subheader("Correlation Matrix")
-            corr_df = pd.DataFrame(
-                np.eye(int(n_assets)),
-                index=[f"A{i+1}" for i in range(int(n_assets))],
-                columns=[f"A{i+1}" for i in range(int(n_assets))],
-            )
+            # Build correlation matrix
+            n_assets_int = int(n_assets)
+            corr = np.eye(n_assets_int)
             
-            # Dynamic key based on n_assets to avoid widget reuse conflicts
-            edited_corr = st.data_editor(
-                corr_df,
-                use_container_width=True,
-                key=f"corr_editor_{int(n_assets)}",
-                hide_index=False
-            )
-            corr = edited_corr.to_numpy()
+            # Only show correlation inputs if more than 1 asset
+            if n_assets_int > 1:
+                st.subheader("Correlations")
+                st.caption("Enter correlation between assets (values between -1 and 1)")
+                
+                for i in range(n_assets_int):
+                    for j in range(i + 1, n_assets_int):
+                        corr_val = st.number_input(
+                            f"Corr(A{i+1}, A{j+1})",
+                            min_value=-1.0,
+                            max_value=1.0,
+                            value=0.0,
+                            step=0.1,
+                            format="%.2f",
+                            key=f"corr_{i}_{j}_{n_assets_int}"
+                        )
+                        corr[i, j] = corr_val
+                        corr[j, i] = corr_val
+            
             tickers = None  # No tickers in manual mode
     
     # Basket weights
