@@ -1,5 +1,5 @@
 """
-Autocall Pricer - Phoenix Structure
+Autocall Athena Pricer - Phoenix Structure
 A Streamlit application for pricing autocallable structured products
 """
 
@@ -442,10 +442,11 @@ def main():
                 columns=[f"A{i+1}" for i in range(int(n_assets))],
             )
             
+            # Dynamic key based on n_assets to avoid widget reuse conflicts
             edited_corr = st.data_editor(
                 corr_df,
                 use_container_width=True,
-                key="corr_editor",
+                key=f"corr_editor_{int(n_assets)}",
                 hide_index=False
             )
             corr = edited_corr.to_numpy()
