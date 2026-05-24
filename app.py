@@ -333,8 +333,8 @@ else:
             index=[f"A{i+1}" for i in range(int(n_assets))],
             columns=[f"A{i+1}" for i in range(int(n_assets))],
         )
-        # FIX: Replace deprecated use_container_width with width
-        corr_df = st.data_editor(corr_df, width=None, key="corr_editor")
+        # FIX: Replace deprecated use_container_width with width='stretch'
+        corr_df = st.data_editor(corr_df, width='stretch', key="corr_editor")
         corr = corr_df.to_numpy()
 
 # --- Basket weights (if weighted)
@@ -394,13 +394,13 @@ with col1:
         {"S0": S0, "sigma": sigma, "q": q},
         index=labels
     )
-    # FIX: Replace deprecated use_container_width with width
-    st.dataframe(df_params, width=None)
+    # FIX: Replace deprecated use_container_width with width='stretch'
+    st.dataframe(df_params, use_container_width=True)
     st.caption("Correlation matrix used (may be adjusted to PSD internally if needed).")
-    st.dataframe(pd.DataFrame(corr, index=labels, columns=labels), width=None)
+    st.dataframe(pd.DataFrame(corr, index=labels, columns=labels), use_container_width=True)
 
     st.subheader("Key metrics")
-    st.dataframe(metrics_df, width=None)
+    st.dataframe(metrics_df, use_container_width=True)
 
     out_df = pd.DataFrame(
         {
