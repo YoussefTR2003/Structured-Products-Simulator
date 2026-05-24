@@ -293,8 +293,7 @@ def show_documentation():
             "📊 Monte Carlo Simulation",
             "🔗 Correlation & Cholesky",
             "🧮 Geometric Brownian Motion",
-            "🧺 Basket Mechanisms",
-            "💰 Payoff Calculation",
+            "🧺 Basket Mechanisms"
         ]
     )
     
