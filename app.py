@@ -1,6 +1,6 @@
 """
-Autocall Athena Pricer - Phoenix Structure
-A Streamlit application for pricing autocallable structured products
+Autocall Phoenix Pricer
+A Streamlit application for pricing Phoenix autocallable structured products
 """
 
 import numpy as np
@@ -9,7 +9,6 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import yfinance as yf
 from typing import Tuple, Optional
-from matplotlib.patches import FancyBboxPatch
 
 # ----------------------------
 # NUMERICAL UTILITIES
@@ -281,13 +280,11 @@ def fetch_market_params(
 # ==========================================
 
 def show_documentation():
-    st.title("📚 How the Autocall Pricer Works")
+    st.title("📚 How the Phoenix Pricer Works")
     st.markdown("**Understanding the mathematics behind Phoenix autocall pricing**")
     
-    # Table of contents
-    st.sidebar.markdown("## 📖 Contents")
     section = st.sidebar.radio(
-        "Jump to section:",
+        "📖 Jump to section:",
         [
             "🎯 What is an Autocall?",
             "📊 Monte Carlo Simulation",
@@ -297,7 +294,6 @@ def show_documentation():
         ]
     )
     
-    # SECTION 1: What is an Autocall?
     if section == "🎯 What is an Autocall?":
         st.header("🎯 What is an Autocall (Phoenix)?")
         
@@ -309,11 +305,9 @@ def show_documentation():
         3. **Protects capital** at maturity (with conditions)
         """)
         
-        # Visual timeline
         st.subheader("📅 Product Timeline")
         
         fig, ax = plt.subplots(figsize=(12, 4))
-        
         times = [0, 0.25, 0.5, 0.75, 1.0]
         labels = ['Start', 'Obs 1', 'Obs 2', 'Obs 3', 'Maturity']
         
@@ -321,81 +315,44 @@ def show_documentation():
         
         for i, (t, label) in enumerate(zip(times, labels)):
             ax.text(t, 0.3, label, ha='center', fontsize=11, fontweight='bold')
-            
-            if i > 0:
-                if i < 4:
-                    ax.add_patch(FancyBboxPatch((t-0.05, 0.6), 0.1, 0.25, 
-                                boxstyle="round,pad=0.01", 
-                                facecolor='lightgreen', edgecolor='green', linewidth=2))
-                    ax.text(t, 0.725, '✓ Coupon?', ha='center', fontsize=9)
-                    ax.text(t, 0.95, '✓ Autocall?', ha='center', fontsize=9, color='blue')
-                else:
-                    ax.add_patch(FancyBboxPatch((t-0.05, 0.6), 0.1, 0.25,
-                                boxstyle="round,pad=0.01",
-                                facecolor='lightyellow', edgecolor='orange', linewidth=2))
-                    ax.text(t, 0.725, 'Final\nPayoff', ha='center', fontsize=9)
         
         ax.set_xlim(-0.1, 1.1)
-        ax.set_ylim(0, 1.2)
+        ax.set_ylim(0, 1.0)
         ax.axis('off')
         ax.set_title('Autocall Timeline with Observation Dates', fontsize=14, fontweight='bold')
         st.pyplot(fig)
         plt.close()
         
-        # Example payoff scenarios
         st.subheader("💡 Example Scenarios")
         
         col1, col2, col3 = st.columns(3)
         
         with col1:
             st.success("**🎉 Best Case**")
-            st.markdown("""
-            **Observation 2**: Asset > 100%
-            
-            ✅ Autocalls early  
-            ✅ Get: Capital + Coupons  
-            ⏱️ Duration: 6 months
-            """)
+            st.markdown("**Observation 2**: Asset > 100%\n\n✅ Autocalls early\n✅ Capital + Coupons\n⏱️ 6 months")
         
         with col2:
             st.info("**📈 Good Case**")
-            st.markdown("""
-            **All Obs**: Asset > 70%  
-            **Maturity**: Asset > 60%
-            
-            ✅ All coupons paid  
-            ✅ Get: Capital + All coupons  
-            ⏱️ Duration: 3 years
-            """)
+            st.markdown("**All Obs**: Asset > 70%\n\n✅ All coupons paid\n✅ Capital protected\n⏱️ 3 years")
         
         with col3:
             st.warning("**📉 Bad Case**")
-            st.markdown("""
-            **Maturity**: Asset at 50%
-            
-            ❌ No autocall  
-            ⚠️ Capital loss: -50%  
-            💰 Some coupons received
-            """)
+            st.markdown("**Maturity**: Asset at 50%\n\n❌ No autocall\n⚠️ Capital loss\n💰 Some coupons")
     
-    # SECTION 2: Monte Carlo
     elif section == "📊 Monte Carlo Simulation":
         st.header("📊 Monte Carlo Simulation")
         
         st.markdown("""
-        ### Why Monte Carlo?
+        Autocalls are **path-dependent**: payoff depends on price history, not just final price.
         
-        Autocalls are **path-dependent**: the payoff depends on the entire price history, not just the final price.
-        
-        **Solution**: Simulate thousands of possible future paths and average the payoffs.
+        **Solution**: Simulate thousands of paths and average payoffs.
         """)
         
         st.latex(r"\text{Price} \approx \frac{1}{N} \sum_{i=1}^{N} \text{Payoff}_i")
         
-        # Interactive demo
         st.subheader("🎲 Interactive Demo")
         
-        n_paths = st.slider("Number of paths to simulate", 10, 200, 50, step=10)
+        n_paths = st.slider("Number of paths", 10, 200, 50, step=10)
         volatility = st.slider("Volatility", 0.1, 0.5, 0.25, step=0.05)
         
         np.random.seed(42)
@@ -416,57 +373,27 @@ def show_documentation():
         time_grid = np.linspace(0, T, n_steps + 1)
         
         for i in range(min(n_paths, 50)):
-            alpha = 0.3 if n_paths > 50 else 0.5
-            ax.plot(time_grid, paths[i], linewidth=0.8, alpha=alpha, color='steelblue')
+            ax.plot(time_grid, paths[i], linewidth=0.8, alpha=0.3, color='steelblue')
         
         mean_path = np.mean(paths, axis=0)
-        ax.plot(time_grid, mean_path, linewidth=3, color='red', label='Average Path', linestyle='--')
-        
-        ax.axhline(S0, color='black', linestyle='--', linewidth=1.5, label='Initial Price')
-        ax.set_xlabel('Time (years)', fontsize=12)
-        ax.set_ylabel('Stock Price', fontsize=12)
-        ax.set_title(f'{n_paths} Simulated Price Paths', fontsize=14, fontweight='bold')
+        ax.plot(time_grid, mean_path, linewidth=3, color='red', label='Average', linestyle='--')
+        ax.axhline(S0, color='black', linestyle='--', linewidth=1.5, label='Initial')
+        ax.set_xlabel('Time (years)')
+        ax.set_ylabel('Stock Price')
+        ax.set_title(f'{n_paths} Simulated Paths')
         ax.legend()
         ax.grid(True, alpha=0.3)
         st.pyplot(fig)
         plt.close()
-        
-        st.info(f"""
-        **📊 Statistics from {n_paths} simulations:**
-        - Average final price: ${mean_path[-1]:.2f}
-        - Min final price: ${np.min(paths[:, -1]):.2f}
-        - Max final price: ${np.max(paths[:, -1]):.2f}
-        - Standard deviation: ${np.std(paths[:, -1]):.2f}
-        """)
-        
-        st.markdown("""
-        ### 🔑 Key Idea
-        
-        More simulations = More accurate price, but slower computation
-        
-        | Simulations | Accuracy | Speed |
-        |------------|----------|-------|
-        | 5,000 | ±2% | Fast ⚡ |
-        | 10,000 | ±1% | Good ✅ |
-        | 30,000 | ±0.5% | Slow 🐌 |
-        """)
     
-    # SECTION 3: Correlation & Cholesky
     elif section == "🔗 Correlation & Cholesky":
         st.header("🔗 Correlation & Cholesky Decomposition")
         
-        st.markdown("""
-        ### The Problem
+        st.markdown("Multi-asset products need **correlated** simulations using Cholesky decomposition.")
         
-        For multi-asset products, we need to simulate **correlated** assets:
-        - Apple and Microsoft tend to move together
-        - How do we capture this in our simulation?
-        """)
-        
-        # Interactive correlation demo
         st.subheader("🎨 Visual Correlation Demo")
         
-        corr_value = st.slider("Correlation between Asset 1 and Asset 2", -0.9, 0.9, 0.5, step=0.1)
+        corr_value = st.slider("Correlation", -0.9, 0.9, 0.5, step=0.1)
         
         np.random.seed(42)
         n_samples = 500
@@ -480,80 +407,26 @@ def show_documentation():
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
         
         ax1.scatter(Z[:, 0], Z[:, 1], alpha=0.5, s=20)
-        ax1.set_xlabel('Asset 1 (independent)', fontsize=11)
-        ax1.set_ylabel('Asset 2 (independent)', fontsize=11)
-        ax1.set_title('BEFORE: Independent Random Variables', fontsize=12, fontweight='bold')
+        ax1.set_title('BEFORE: Independent', fontweight='bold')
         ax1.grid(True, alpha=0.3)
-        ax1.set_xlim(-3, 3)
-        ax1.set_ylim(-3, 3)
         
         ax2.scatter(X[:, 0], X[:, 1], alpha=0.5, s=20, color='coral')
-        ax2.set_xlabel('Asset 1', fontsize=11)
-        ax2.set_ylabel('Asset 2', fontsize=11)
-        ax2.set_title(f'AFTER: Correlated (ρ={corr_value:.1f})', fontsize=12, fontweight='bold')
+        ax2.set_title(f'AFTER: Correlated (ρ={corr_value:.1f})', fontweight='bold')
         ax2.grid(True, alpha=0.3)
-        ax2.set_xlim(-3, 3)
-        ax2.set_ylim(-3, 3)
         
-        plt.tight_layout()
         st.pyplot(fig)
         plt.close()
-        
-        st.markdown("""
-        ### 🧮 What is Cholesky Decomposition?
-        
-        It's a mathematical technique to transform independent random numbers into correlated ones.
-        
-        **Formula**: If we have a correlation matrix **C**, we find a matrix **L** such that:
-        """)
-        
-        st.latex(r"C = L \times L^T")
-        
-        st.markdown("""
-        Then:
-        1. Generate independent random numbers **Z**
-        2. Multiply: **X = Z × L**
-        3. Now **X** has the desired correlations!
-        """)
-        
-        st.info("""
-        **🔑 Why This Matters**
-        
-        - **Worst-of basket**: If assets are highly correlated (ρ=0.9), they crash together → More risky
-        - **Diversification**: Low correlation (ρ=0.2) → One asset can save the day
-        """)
     
-    # SECTION 4: GBM
     elif section == "🧮 Geometric Brownian Motion":
         st.header("🧮 Geometric Brownian Motion (GBM)")
         
-        st.markdown("""
-        ### Stock Price Model
-        
-        We model stock prices using **Geometric Brownian Motion** - the standard model in finance.
-        
-        **The Equation**:
-        """)
-        
         st.latex(r"dS = \mu S dt + \sigma S dW")
         
-        st.markdown("""
-        Where:
-        - **S** = Stock price
-        - **μ** = Drift (expected return)
-        - **σ** = Volatility (how much it bounces around)
-        - **dW** = Random shock (Brownian motion)
-        
-        **In English**: 
-        > "The stock price changes by a predictable drift **plus** a random shock"
-        """)
-        
-        # Interactive GBM
         st.subheader("🎮 Interactive GBM")
         
         col1, col2 = st.columns(2)
         with col1:
-            mu = st.slider("Drift (μ) - Expected return", -0.2, 0.3, 0.05, step=0.05)
+            mu = st.slider("Drift (μ)", -0.2, 0.3, 0.05, step=0.05)
         with col2:
             sigma_gbm = st.slider("Volatility (σ)", 0.05, 0.6, 0.25, step=0.05)
         
@@ -570,9 +443,7 @@ def show_documentation():
         for i in range(n_paths_gbm):
             for t in range(1, n_steps + 1):
                 z = np.random.randn()
-                drift_component = (mu - 0.5 * sigma_gbm**2) * dt
-                diffusion_component = sigma_gbm * np.sqrt(dt) * z
-                paths_gbm[i, t] = paths_gbm[i, t-1] * np.exp(drift_component + diffusion_component)
+                paths_gbm[i, t] = paths_gbm[i, t-1] * np.exp((mu - 0.5 * sigma_gbm**2) * dt + sigma_gbm * np.sqrt(dt) * z)
         
         fig, ax = plt.subplots(figsize=(10, 6))
         time_grid = np.linspace(0, T, n_steps + 1)
@@ -582,121 +453,54 @@ def show_documentation():
         
         mean_path_gbm = np.mean(paths_gbm, axis=0)
         ax.plot(time_grid, mean_path_gbm, linewidth=3, color='red', label='Average', linestyle='--')
-        ax.axhline(S0, color='black', linestyle='--', linewidth=1.5, label='Initial Price')
-        
-        theoretical = S0 * np.exp(mu * time_grid)
-        ax.plot(time_grid, theoretical, linewidth=2, color='green', label='Theoretical E[S]', linestyle=':')
-        
-        ax.set_xlabel('Time (years)', fontsize=12)
-        ax.set_ylabel('Stock Price ($)', fontsize=12)
-        ax.set_title(f'GBM: μ={mu:.2f}, σ={sigma_gbm:.2f}', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Time (years)')
+        ax.set_ylabel('Stock Price ($)')
+        ax.set_title(f'GBM: μ={mu:.2f}, σ={sigma_gbm:.2f}')
         ax.legend()
         ax.grid(True, alpha=0.3)
         st.pyplot(fig)
         plt.close()
-        
-        st.info("""
-        ### 🎯 Risk-Neutral Pricing
-        
-        In our pricer, we use **risk-neutral** measure where:
-        - Drift μ = **r - q** (risk-free rate minus dividends)
-        - This is the standard for derivatives pricing
-        
-        **Why?** It ensures arbitrage-free pricing and allows discounting at the risk-free rate.
-        """)
     
-    # SECTION 5: Basket Mechanisms
     elif section == "🧺 Basket Mechanisms":
         st.header("🧺 Basket Mechanisms")
         
-        st.markdown("""
-        ### Multi-Asset Products
-        
-        When an autocall has **multiple underlying assets** (e.g., Apple + Microsoft + Tesla),
-        we need to combine them into a **basket**.
-        """)
-        
         st.subheader("📊 Basket Types")
         
-        assets_perf = {
-            'Apple': 1.15,
-            'Microsoft': 1.05,
-            'Tesla': 0.85
-        }
+        assets_perf = {'Apple': 1.15, 'Microsoft': 1.05, 'Tesla': 0.85}
+        perf_values = list(assets_perf.values())
         
         tab1, tab2, tab3, tab4 = st.tabs(["Worst-of", "Best-of", "Average", "Weighted"])
         
-        perf_values = list(assets_perf.values())
-        
         with tab1:
-            st.markdown("""
-            ### Worst-of Basket
-            
-            **Formula**: `Basket = min(Asset1, Asset2, Asset3)`
-            
-            **Use case**: Most conservative / Most common in structured products
-            
-            **Payoff depends on**: The worst performing asset
-            """)
+            st.markdown("**Formula**: `min(Asset1, Asset2, Asset3)`")
             st.metric("Basket Performance", f"{min(perf_values):.0%}")
-            st.error("⚠️ In this case: Tesla (85%) determines the payoff")
         
         with tab2:
-            st.markdown("""
-            ### Best-of Basket
-            
-            **Formula**: `Basket = max(Asset1, Asset2, Asset3)`
-            
-            **Use case**: Most optimistic / Rare in real products
-            
-            **Payoff depends on**: The best performing asset
-            """)
+            st.markdown("**Formula**: `max(Asset1, Asset2, Asset3)`")
             st.metric("Basket Performance", f"{max(perf_values):.0%}")
-            st.success("✅ In this case: Apple (115%) determines the payoff")
         
         with tab3:
-            st.markdown("""
-            ### Average Basket
-            
-            **Formula**: `Basket = (Asset1 + Asset2 + Asset3) / 3`
-            
-            **Use case**: Balanced approach
-            
-            **Payoff depends on**: Average of all assets
-            """)
+            st.markdown("**Formula**: `mean(Asset1, Asset2, Asset3)`")
             st.metric("Basket Performance", f"{np.mean(perf_values):.0%}")
-            st.info("📊 Average smooths out individual performances")
         
         with tab4:
-            st.markdown("""
-            ### Weighted Basket
-            
-            **Formula**: `Basket = w1·Asset1 + w2·Asset2 + w3·Asset3`
-            
-            where w1 + w2 + w3 = 1
-            
-            **Use case**: When you want different exposures to each asset
-            """)
-            
+            st.markdown("**Formula**: `w1·Asset1 + w2·Asset2 + w3·Asset3`")
             w1 = st.slider("Apple weight", 0.0, 1.0, 0.33, step=0.01, key='w1_doc')
             w2 = st.slider("Microsoft weight", 0.0, 1.0, 0.33, step=0.01, key='w2_doc')
-            w3 = 1 - w1 - w2
-            
-            st.write(f"Tesla weight (automatic): {w3:.2f}")
+            w3 = max(0, 1 - w1 - w2)
             
             if w3 < 0:
                 st.error("⚠️ Weights must sum to 1!")
             else:
                 weighted_perf = w1 * perf_values[0] + w2 * perf_values[1] + w3 * perf_values[2]
                 st.metric("Weighted Basket Performance", f"{weighted_perf:.0%}")
-    
-    
+
 # ==========================================
 # PRICER PAGE
 # ==========================================
 
 def show_pricer():
-    st.title("🏛️ Autocall Athena Pricer — Phoenix Structure")
+    st.title("🏛️ Autocall Phoenix Pricer")
     
     with st.sidebar:
         st.header("📊 Mode")
@@ -728,7 +532,7 @@ def show_pricer():
         n_steps_est = int(round(T * steps_per_year))
         mem_mb = (n_sims * n_steps_est * 2 * 8) / (1024**2)
         if mem_mb > 300:
-            st.warning(f"⚠️ Estimated memory: {mem_mb:.0f} MB. Risk of crash on free tier.")
+            st.warning(f"⚠️ Estimated memory: {mem_mb:.0f} MB")
     
     tickers = None
     px_preview = None
@@ -751,7 +555,7 @@ def show_pricer():
             
             if len(tickers) < len(requested_tickers):
                 failed = set(requested_tickers) - set(tickers)
-                st.warning(f"⚠️ Could not download: {', '.join(failed)}. Proceeding with: {', '.join(tickers)}")
+                st.warning(f"⚠️ Could not download: {', '.join(failed)}")
             
             n_assets = len(S0)
             q = np.zeros(n_assets)
@@ -771,7 +575,7 @@ def show_pricer():
                     q = np.array(q_list)
         
         except Exception as e:
-            st.error(f"❌ Market data error: {str(e)}")
+            st.error(f"❌ Error: {str(e)}")
             st.stop()
     
     else:
@@ -799,7 +603,6 @@ def show_pricer():
             
             if n_assets_int > 1:
                 st.subheader("Correlations")
-                st.caption("Correlation between assets (-1 to 1)")
                 
                 for i in range(n_assets_int):
                     for j in range(i + 1, n_assets_int):
@@ -851,12 +654,44 @@ def show_pricer():
         
         metrics_df = summarize_metrics(payoff, autocalled, autocall_obs, int(obs_per_year))
         
+        # ===== MAIN PRICE DISPLAY =====
+        st.markdown("---")
+        col_price1, col_price2, col_price3 = st.columns(3)
+        
+        expected_price = np.mean(payoff)
+        price_return = (expected_price / nominal - 1) * 100
+        
+        with col_price1:
+            st.metric(
+                "💰 Expected Price",
+                f"${expected_price:,.2f}",
+                delta=f"{price_return:+.2f}%",
+                delta_color="normal"
+            )
+        
+        with col_price2:
+            st.metric(
+                "📊 Median Price",
+                f"${np.median(payoff):,.2f}",
+                delta=f"{(np.median(payoff)/nominal - 1)*100:+.2f}%",
+                delta_color="normal"
+            )
+        
+        with col_price3:
+            st.metric(
+                "📈 Autocall Probability",
+                f"{np.mean(autocalled)*100:.1f}%"
+            )
+        
+        st.markdown("---")
+        
+        # ===== DETAILED ANALYSIS =====
         col1, col2 = st.columns([1, 2])
         
         with col1:
             st.subheader("📊 Input Summary")
             labels = tickers if tickers else [f"A{i+1}" for i in range(len(S0))]
-            df_params = pd.DataFrame({"S0": S0, "Volatility": sigma, "Div Yield": q}, index=labels)
+            df_params = pd.DataFrame({"S0": S0, "Vol": sigma, "Div": q}, index=labels)
             st.dataframe(df_params, width=600)
             
             st.caption("**Correlation Matrix**")
@@ -865,17 +700,18 @@ def show_pricer():
             st.subheader("📈 Key Metrics")
             st.dataframe(metrics_df, width=600)
             
-            out_df = pd.DataFrame({"payoff": payoff, "autocalled": autocalled.astype(int), "autocall_obs": autocall_obs})
+            out_df = pd.DataFrame({"payoff": payoff, "autocalled": autocalled.astype(int)})
             csv = out_df.to_csv(index=False)
             st.download_button("⬇️ Download Results (CSV)", data=csv, file_name="autocall_simulation.csv", mime="text/csv")
         
         with col2:
             st.subheader("💰 Payoff Distribution")
-            fig1, ax1 = plt.subplots(figsize=(8, 4))
+            fig1, ax1 = plt.subplots(figsize=(8, 5))
             ax1.hist(payoff, bins=80, edgecolor='black', alpha=0.7, color='steelblue')
-            ax1.axvline(nominal, color='red', linestyle='--', linewidth=2, label=f'Nominal ({nominal:.0f})')
-            ax1.set_xlabel("Payoff")
-            ax1.set_ylabel("Frequency")
+            ax1.axvline(nominal, color='red', linestyle='--', linewidth=2, label=f'Nominal')
+            ax1.axvline(expected_price, color='green', linestyle='--', linewidth=2, label=f'Expected')
+            ax1.set_xlabel("Payoff ($)", fontsize=12)
+            ax1.set_ylabel("Frequency", fontsize=12)
             ax1.legend()
             ax1.grid(True, alpha=0.3)
             st.pyplot(fig1)
@@ -883,53 +719,55 @@ def show_pricer():
             
             st.subheader("⏱️ Autocall Timing")
             calls = autocall_obs[autocall_obs >= 0]
-            fig2, ax2 = plt.subplots(figsize=(8, 4))
+            fig2, ax2 = plt.subplots(figsize=(8, 5))
             
             if calls.size > 0:
                 ax2.hist(calls, bins=np.arange(-0.5, len(obs_idx) + 0.5, 1), edgecolor='black', alpha=0.7, color='coral')
-                ax2.set_xlabel("Observation Number")
-                ax2.set_ylabel("Count")
+                ax2.set_xlabel("Observation Number", fontsize=12)
+                ax2.set_ylabel("Count", fontsize=12)
                 ax2.grid(True, alpha=0.3)
             else:
-                ax2.text(0.5, 0.5, "No autocalls occurred", ha="center", va="center", fontsize=14, color='gray')
+                ax2.text(0.5, 0.5, "No autocalls", ha="center", va="center", fontsize=14, color='gray')
                 ax2.set_xlim(0, 1)
                 ax2.set_ylim(0, 1)
                 ax2.axis("off")
             
             st.pyplot(fig2)
             plt.close(fig2)
-            
-            st.subheader("📉 Sample Paths (Basket Performance)")
-            paths3 = ensure_3d_paths(paths)
-            tgrid = np.linspace(0, T, n_steps + 1)
-            
-            fig3, ax3 = plt.subplots(figsize=(8, 5))
-            m = min(30, paths3.shape[0])
-            
-            for i in range(m):
-                ratio_line = basket_ratio(paths3[i, :, :], S0, kind=basket_kind, weights=weights)
-                ax3.plot(tgrid, ratio_line, linewidth=0.8, alpha=0.5, color='gray')
-            
-            ax3.axhline(coupon_trigger, linestyle='--', color='green', label=f'Coupon trigger ({coupon_trigger:.0%})', linewidth=2)
-            ax3.axhline(call_trigger, linestyle='--', color='blue', label=f'Autocall trigger ({call_trigger:.0%})', linewidth=2)
-            ax3.axhline(barrier, linestyle='--', color='red', label=f'Barrier ({barrier:.0%})', linewidth=2)
-            
-            ax3.set_xlabel("Time (years)")
-            ax3.set_ylabel("Basket Performance")
-            ax3.legend(loc='best')
-            ax3.grid(True, alpha=0.3)
-            st.pyplot(fig3)
-            plt.close(fig3)
+        
+        # Sample paths
+        st.subheader("📉 Sample Paths (30 simulations)")
+        paths3 = ensure_3d_paths(paths)
+        tgrid = np.linspace(0, T, n_steps + 1)
+        
+        fig3, ax3 = plt.subplots(figsize=(12, 5))
+        m = min(30, paths3.shape[0])
+        
+        for i in range(m):
+            ratio_line = basket_ratio(paths3[i, :, :], S0, kind=basket_kind, weights=weights)
+            ax3.plot(tgrid, ratio_line, linewidth=0.8, alpha=0.4, color='steelblue')
+        
+        ax3.axhline(coupon_trigger, linestyle='--', color='green', label=f'Coupon ({coupon_trigger:.0%})', linewidth=2)
+        ax3.axhline(call_trigger, linestyle='--', color='blue', label=f'Autocall ({call_trigger:.0%})', linewidth=2)
+        ax3.axhline(barrier, linestyle='--', color='red', label=f'Barrier ({barrier:.0%})', linewidth=2)
+        ax3.axhline(1.0, linestyle=':', color='black', linewidth=1)
+        
+        ax3.set_xlabel("Time (years)", fontsize=12)
+        ax3.set_ylabel("Basket Performance", fontsize=12)
+        ax3.legend(loc='best')
+        ax3.grid(True, alpha=0.3)
+        st.pyplot(fig3)
+        plt.close(fig3)
         
         if px_preview is not None:
             st.subheader("📊 Market Data Preview")
             st.line_chart(px_preview)
         
         st.divider()
-        st.caption("⚠️ **Disclaimer**: Simplified Monte Carlo simulator using GBM. Real pricing uses implied vol surfaces, dividend curves, and calibrated rate curves.")
+        st.caption("⚠️ **Disclaimer**: Simplified simulator. See Documentation for limitations.")
     
     except Exception as e:
-        st.error(f"❌ Simulation error: {str(e)}")
+        st.error(f"❌ Error: {str(e)}")
         st.stop()
 
 # ==========================================
@@ -937,9 +775,8 @@ def show_pricer():
 # ==========================================
 
 def main():
-    st.set_page_config(page_title="Autocall Athena Pricer", layout="wide")
+    st.set_page_config(page_title="Autocall Phoenix Pricer", layout="wide")
     
-    # Navigation in sidebar
     page = st.sidebar.radio(
         "📑 Navigation",
         ["🏛️ Pricer", "📚 Documentation"],
