@@ -11,6 +11,44 @@ import yfinance as yf
 from typing import Tuple, Optional
 
 # ----------------------------
+# PAGE CONFIG
+# ----------------------------
+st.set_page_config(
+    page_title="Autocall Phoenix Pricer",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS for beautiful styling
+st.markdown("""
+<style>
+    .big-price {
+        font-size: 48px;
+        font-weight: bold;
+        text-align: center;
+        padding: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        margin: 20px 0;
+    }
+    .price-subtitle {
+        font-size: 18px;
+        text-align: center;
+        color: #666;
+        margin-top: -10px;
+        margin-bottom: 20px;
+    }
+    .metric-card {
+        background-color: #f0f2f6;
+        padding: 20px;
+        border-radius: 8px;
+        border-left: 4px solid #667eea;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ----------------------------
 # NUMERICAL UTILITIES
 # ----------------------------
 
@@ -179,7 +217,7 @@ def phoenix_payoff(
         
         if memory:
             accrued_alive = accrued[alive] + nominal * coupon_rate_per_obs
-            payoff[alive] += accrued_live * coupon_ok
+            payoff[alive] += accrued_alive * coupon_ok
             accrued[alive] = accrued_alive * (~coupon_ok)
         else:
             payoff[alive] += (nominal * coupon_rate_per_obs) * coupon_ok
@@ -501,13 +539,13 @@ def show_documentation():
 
 def show_pricer():
     st.title("🏛️ Autocall Phoenix Pricer")
+    st.markdown("**Initial Investment: $100 | Simulate the payoff with different parameters**")
     
     with st.sidebar:
         st.header("📊 Mode")
         mode = st.radio("Parameter source", ["Manual parameters", "Market data (Yahoo Finance)"], index=0)
         
         st.header("📋 Product Structure")
-        nominal = st.number_input("Nominal",value=100 )
         T = st.number_input("Maturity (years)", min_value=0.25, value=3.0, step=0.25)
         steps_per_year = st.selectbox("Simulation steps/year", [252, 52, 12], index=0)
         obs_per_year = st.selectbox("Observation frequency/year", [12, 4, 2, 1], index=1)
@@ -528,6 +566,8 @@ def show_pricer():
         st.header("🎲 Monte Carlo")
         n_sims = st.slider("Simulations", 1000, 10000, 10000, step=1000)
         seed = st.number_input("Random seed", value=42, step=1)
+        
+        nominal = 100.0  # FIXED AT 100
         
         n_steps_est = int(round(T * steps_per_year))
         mem_mb = (n_sims * n_steps_est * 2 * 8) / (1024**2)
@@ -654,33 +694,47 @@ def show_pricer():
         
         metrics_df = summarize_metrics(payoff, autocalled, autocall_obs, int(obs_per_year))
         
-        # ===== MAIN PRICE DISPLAY =====
-        st.markdown("---")
-        col_price1, col_price2, col_price3 = st.columns(3)
-        
+        # ===== BEAUTIFUL MAIN PRICE DISPLAY =====
         expected_price = np.mean(payoff)
         price_return = (expected_price / nominal - 1) * 100
+        median_price = np.median(payoff)
+        autocall_prob = np.mean(autocalled) * 100
         
-        with col_price1:
+        st.markdown(f"""
+        <div class="big-price">
+            💰 Estimated Price: ${expected_price:.2f}
+        </div>
+        <div class="price-subtitle">
+            Expected Payoff with $100 Investment | Return: {price_return:+.2f}%
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Key metrics display
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
             st.metric(
-                "💰 Expected Price",
-                f"${expected_price:,.2f}",
-                delta=f"{price_return:+.2f}%",
-                delta_color="normal"
+                "💵 Median Price",
+                f"${median_price:.2f}",
+                delta=f"{(median_price/nominal - 1)*100:+.2f}%"
             )
         
-        with col_price2:
+        with col2:
             st.metric(
-                "📊 Median Price",
-                f"${np.median(payoff):,.2f}",
-                delta=f"{(np.median(payoff)/nominal - 1)*100:+.2f}%",
-                delta_color="normal"
+                "📈 Autocall Prob",
+                f"{autocall_prob:.1f}%"
             )
         
-        with col_price3:
+        with col3:
             st.metric(
-                "📈 Autocall Probability",
-                f"{np.mean(autocalled)*100:.1f}%"
+                "5% Quantile",
+                f"${np.quantile(payoff, 0.05):.2f}"
+            )
+        
+        with col4:
+            st.metric(
+                "1% Quantile",
+                f"${np.quantile(payoff, 0.01):.2f}"
             )
         
         st.markdown("---")
@@ -692,13 +746,13 @@ def show_pricer():
             st.subheader("📊 Input Summary")
             labels = tickers if tickers else [f"A{i+1}" for i in range(len(S0))]
             df_params = pd.DataFrame({"S0": S0, "Vol": sigma, "Div": q}, index=labels)
-            st.dataframe(df_params, width=600)
+            st.dataframe(df_params, use_container_width=True)
             
             st.caption("**Correlation Matrix**")
-            st.dataframe(pd.DataFrame(corr, index=labels, columns=labels).round(3), width=600)
+            st.dataframe(pd.DataFrame(corr, index=labels, columns=labels).round(3), use_container_width=True)
             
             st.subheader("📈 Key Metrics")
-            st.dataframe(metrics_df, width=600)
+            st.dataframe(metrics_df, use_container_width=True)
             
             out_df = pd.DataFrame({"payoff": payoff, "autocalled": autocalled.astype(int)})
             csv = out_df.to_csv(index=False)
@@ -708,7 +762,7 @@ def show_pricer():
             st.subheader("💰 Payoff Distribution")
             fig1, ax1 = plt.subplots(figsize=(8, 5))
             ax1.hist(payoff, bins=80, edgecolor='black', alpha=0.7, color='steelblue')
-            ax1.axvline(nominal, color='red', linestyle='--', linewidth=2, label=f'Nominal')
+            ax1.axvline(nominal, color='red', linestyle='--', linewidth=2, label=f'Initial ($100)')
             ax1.axvline(expected_price, color='green', linestyle='--', linewidth=2, label=f'Expected')
             ax1.set_xlabel("Payoff ($)", fontsize=12)
             ax1.set_ylabel("Frequency", fontsize=12)
@@ -775,8 +829,6 @@ def show_pricer():
 # ==========================================
 
 def main():
-    st.set_page_config(page_title="Autocall Phoenix Pricer", layout="wide")
-    
     page = st.sidebar.radio(
         "📑 Navigation",
         ["🏛️ Pricer", "📚 Documentation"],
