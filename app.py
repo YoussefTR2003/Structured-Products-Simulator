@@ -694,47 +694,64 @@ def show_pricer():
         
         metrics_df = summarize_metrics(payoff, autocalled, autocall_obs, int(obs_per_year))
         
-        # ===== BEAUTIFUL MAIN PRICE DISPLAY =====
-        expected_price = np.mean(payoff)
-        price_return = (expected_price / nominal - 1) * 100
-        median_price = np.median(payoff)
+        # ===== APPLY DISCOUNT FACTOR FOR CORRECT PRICING =====
+        # Fair value = E[Payoff] * exp(-r * T)
+        discount_factor = np.exp(-r * T)
+        expected_payoff = np.mean(payoff)
+        estimated_price = expected_payoff * discount_factor
+        price_return = (estimated_price / nominal - 1) * 100
+        
+        median_payoff = np.median(payoff)
+        median_price = median_payoff * discount_factor
         autocall_prob = np.mean(autocalled) * 100
         
         st.markdown(f"""
         <div class="big-price">
-            Estimated Price: ${expected_price:.2f}
+            Fair Value: ${estimated_price:.2f}
         </div>
         <div class="price-subtitle">
-            Expected Payoff with $100 Investment | Return: {price_return:+.2f}%
+            What you should pay today for $100 nominal | Expected Return: {price_return:+.2f}%
         </div>
         """, unsafe_allow_html=True)
+        
+        # Explanation box
+        st.info(f"""
+        **Pricing Breakdown:**
+        - Expected Payoff (at maturity): ${expected_payoff:.2f}
+        - Discount Factor: {discount_factor:.4f} (r={r*100:.1f}%, T={T:.2f}y)
+        - Fair Value Today: ${estimated_price:.2f}
+        
+        The fair value is the discounted payoff using the risk-free rate.
+        """)
         
         # Key metrics display
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.metric(
-                "Median Price",
-                f"${median_price:.2f}",
-                delta=f"{(median_price/nominal - 1)*100:+.2f}%"
+                "Expected Payoff",
+                f"${expected_payoff:.2f}",
+                delta=f"at maturity",
+                delta_color="off"
             )
         
         with col2:
             st.metric(
-                "Autocall Probability",
-                f"{autocall_prob:.1f}%"
+                "Median Fair Value",
+                f"${median_price:.2f}",
+                delta=f"{(median_price/nominal - 1)*100:+.2f}%"
             )
         
         with col3:
             st.metric(
-                "5% Quantile",
+                "5% Quantile (Payoff)",
                 f"${np.quantile(payoff, 0.05):.2f}"
             )
         
         with col4:
             st.metric(
-                "1% Quantile",
-                f"${np.quantile(payoff, 0.01):.2f}"
+                "Autocall Probability",
+                f"{autocall_prob:.1f}%"
             )
         
         st.markdown("---")
@@ -761,12 +778,13 @@ def show_pricer():
         with col2:
             st.subheader("Payoff Distribution")
             fig1, ax1 = plt.subplots(figsize=(8, 5))
-            ax1.hist(payoff, bins=80, edgecolor='black', alpha=0.7, color='steelblue')
-            ax1.axvline(nominal, color='red', linestyle='--', linewidth=2, label=f'Initial ($100)')
-            ax1.axvline(expected_price, color='green', linestyle='--', linewidth=2, label=f'Expected')
-            ax1.set_xlabel("Payoff ($)", fontsize=12)
+            ax1.hist(payoff, bins=80, edgecolor='black', alpha=0.7, color='steelblue', label='Future Payoff')
+            ax1.axvline(nominal, color='red', linestyle='--', linewidth=2, label='Nominal ($100)')
+            ax1.axvline(expected_payoff, color='green', linestyle='--', linewidth=2, label=f'Expected Payoff')
+            ax1.axvline(estimated_price, color='orange', linestyle='--', linewidth=2.5, label=f'Fair Value')
+            ax1.set_xlabel("Value ($)", fontsize=12)
             ax1.set_ylabel("Frequency", fontsize=12)
-            ax1.legend()
+            ax1.legend(fontsize=9)
             ax1.grid(True, alpha=0.3)
             st.pyplot(fig1)
             plt.close(fig1)
