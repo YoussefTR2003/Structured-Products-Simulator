@@ -541,7 +541,7 @@ def show_documentation():
 
 def show_pricer():
     st.title("Autocall Phoenix Pricer")
-    st.markdown( "Fair Value Pricing with Risk-Neutral Monte Carlo**")
+    st.markdown("**Initial Investment: $100 | Fair Value Pricing with Risk-Neutral Monte Carlo**")
     
     with st.sidebar:
         st.header("Mode")
@@ -566,7 +566,7 @@ def show_pricer():
         use_q = st.checkbox("Set dividend yields", value=False)
         
         st.header("Monte Carlo")
-        n_sims = st.slider("Simulations", 10, 1000, 1000, step=10)
+        n_sims = st.slider("Simulations", 1000, 10000, 10000, step=1000)
         seed = st.number_input("Random seed", value=42, step=1)
         
         nominal = 100.0
@@ -711,106 +711,95 @@ def show_pricer():
             ${estimated_price:.2f}
         </div>
         <div class="price-subtitle">
-            Fair Value Today | Discounted at {r*100:.1f}% over {T:.1f} years
+            Fair Value Today | Discounted at {r*100:.1f}% over {T:.1f} years | Autocall Probability: {autocall_prob:.1f}%
         </div>
         """, unsafe_allow_html=True)
         
-        # Key metrics in 4 columns
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Expected Payoff", f"${expected_payoff:.2f}", "at maturity")
-        
-        with col2:
-            st.metric("Discount Factor", f"{discount_factor:.4f}", f"exp(-{r*100:.1f}% × {T:.1f}y)")
-        
-        with col3:
-            st.metric("Autocall Prob", f"{autocall_prob:.1f}%")
-        
-        with col4:
-            st.metric("Median Fair Value", f"${median_price:.2f}")
-        
         st.divider()
         
-        # ===== TWO-COLUMN LAYOUT =====
-        col_left, col_right = st.columns([1.2, 1.8])
+        # ===== FULL WIDTH INPUT SUMMARY =====
+        st.subheader("Input Summary", divider="blue")
         
-        # LEFT COLUMN: Input Summary (compact)
-        with col_left:
-            st.subheader("Input Summary", divider="blue")
-            
-            labels = tickers if tickers else [f"A{i+1}" for i in range(len(S0))]
-            
-            # Underlyings table
+        labels = tickers if tickers else [f"A{i+1}" for i in range(len(S0))]
+        
+        col1, col2, col3 = st.columns(3)
+        
+        # Column 1: Underlyings
+        with col1:
             st.caption("Underlyings")
             df_params = pd.DataFrame({
                 "Price": [f"${x:.2f}" for x in S0],
                 "Vol": [f"{x:.1%}" for x in sigma]
             }, index=labels)
-            st.dataframe(df_params, use_container_width=True, height=150)
-            
-            # Correlation matrix
+            st.dataframe(df_params, use_container_width=True, height=120)
+        
+        # Column 2: Correlation Matrix
+        with col2:
             st.caption("Correlation Matrix")
             df_corr = pd.DataFrame(corr, index=labels, columns=labels)
-            st.dataframe(df_corr.round(2), use_container_width=True, height=150)
-            
-            # Product parameters
+            st.dataframe(df_corr.round(2), use_container_width=True, height=120)
+        
+        # Column 3: Product Parameters
+        with col3:
             st.caption("Product Parameters")
-            params_info = {
-                "Maturity": f"{T:.2f}y",
-                "Coupon p.a.": f"{coupon_pa:.1%}",
-                "Coupon Trigger": f"{coupon_trigger:.0%}",
-                "Autocall": f"{call_trigger:.0%}",
-                "Barrier": f"{barrier:.0%}",
-                "Basket": basket_kind,
-                "Risk-free Rate": f"{r:.2%}"
-            }
-            for key, val in params_info.items():
+            params_info = [
+                ("Maturity", f"{T:.2f}y"),
+                ("Coupon p.a.", f"{coupon_pa:.1%}"),
+                ("Coupon Trigger", f"{coupon_trigger:.0%}"),
+                ("Autocall", f"{call_trigger:.0%}"),
+                ("Barrier", f"{barrier:.0%}"),
+                ("Basket", basket_kind.capitalize()),
+                ("Risk-free Rate", f"{r:.2%}")
+            ]
+            for key, val in params_info:
                 st.text(f"{key}: {val}")
         
-        # RIGHT COLUMN: Visualizations
-        with col_right:
-            st.subheader("Payoff Analysis", divider="blue")
-            
-            # Main histogram
-            fig1, ax1 = plt.subplots(figsize=(10, 5.5))
-            ax1.hist(payoff, bins=80, edgecolor='black', alpha=0.65, color='steelblue', label='Future Payoff')
-            ax1.axvline(nominal, color='red', linestyle='--', linewidth=2.5, label='Nominal ($100)', alpha=0.8)
-            ax1.axvline(expected_payoff, color='green', linestyle='--', linewidth=2.5, label='Expected Payoff', alpha=0.8)
-            ax1.axvline(estimated_price, color='orange', linestyle='--', linewidth=3, label='Fair Value Today', alpha=0.9)
-            
-            ax1.set_xlabel('Value ($)', fontsize=11, fontweight='bold')
-            ax1.set_ylabel('Frequency', fontsize=11, fontweight='bold')
-            ax1.set_title('Payoff Distribution at Maturity', fontsize=12, fontweight='bold', pad=15)
-            ax1.legend(loc='upper right', fontsize=10)
-            ax1.grid(True, alpha=0.2, linestyle='--')
-            ax1.set_axisbelow(True)
-            
-            plt.tight_layout()
-            st.pyplot(fig1, use_container_width=True)
-            plt.close(fig1)
-            
-            # Autocall timing
-            st.subheader("Autocall Timing", divider="blue")
-            calls = autocall_obs[autocall_obs >= 0]
-            fig2, ax2 = plt.subplots(figsize=(10, 4.5))
-            
-            if calls.size > 0:
-                ax2.hist(calls, bins=np.arange(-0.5, len(obs_idx) + 0.5, 1), edgecolor='black', alpha=0.7, color='coral')
-                ax2.set_xlabel('Observation Number', fontsize=11, fontweight='bold')
-                ax2.set_ylabel('Count', fontsize=11, fontweight='bold')
-                ax2.set_title(f'Autocall Events ({autocall_prob:.1f}% probability)', fontsize=12, fontweight='bold', pad=15)
-                ax2.grid(True, alpha=0.2, linestyle='--', axis='y')
-                ax2.set_axisbelow(True)
-            else:
-                ax2.text(0.5, 0.5, 'No Autocalls', ha='center', va='center', fontsize=16, color='gray', transform=ax2.transAxes)
-                ax2.set_xlim(0, 1)
-                ax2.set_ylim(0, 1)
-                ax2.axis('off')
-            
-            plt.tight_layout()
-            st.pyplot(fig2, use_container_width=True)
-            plt.close(fig2)
+        st.divider()
+        
+        # ===== GRAPHS WITH MORE SPACE =====
+        st.subheader("Payoff Analysis", divider="blue")
+        
+        # Main histogram - Full width with more height
+        fig1, ax1 = plt.subplots(figsize=(14, 6))
+        ax1.hist(payoff, bins=80, edgecolor='black', alpha=0.65, color='steelblue', label='Future Payoff')
+        ax1.axvline(nominal, color='red', linestyle='--', linewidth=2.5, label='Nominal ($100)', alpha=0.8)
+        ax1.axvline(expected_payoff, color='green', linestyle='--', linewidth=2.5, label='Expected Payoff', alpha=0.8)
+        ax1.axvline(estimated_price, color='orange', linestyle='--', linewidth=3, label='Fair Value Today', alpha=0.9)
+        
+        ax1.set_xlabel('Value ($)', fontsize=12, fontweight='bold')
+        ax1.set_ylabel('Frequency', fontsize=12, fontweight='bold')
+        ax1.set_title('Payoff Distribution at Maturity', fontsize=13, fontweight='bold', pad=15)
+        ax1.legend(loc='upper right', fontsize=11)
+        ax1.grid(True, alpha=0.2, linestyle='--')
+        ax1.set_axisbelow(True)
+        
+        plt.tight_layout()
+        st.pyplot(fig1, use_container_width=True)
+        plt.close(fig1)
+        
+        st.divider()
+        
+        # Autocall timing - Full width
+        st.subheader("Autocall Timing", divider="blue")
+        calls = autocall_obs[autocall_obs >= 0]
+        fig2, ax2 = plt.subplots(figsize=(14, 5.5))
+        
+        if calls.size > 0:
+            ax2.hist(calls, bins=np.arange(-0.5, len(obs_idx) + 0.5, 1), edgecolor='black', alpha=0.7, color='coral')
+            ax2.set_xlabel('Observation Number', fontsize=12, fontweight='bold')
+            ax2.set_ylabel('Count', fontsize=12, fontweight='bold')
+            ax2.set_title(f'Autocall Events ({autocall_prob:.1f}% probability)', fontsize=13, fontweight='bold', pad=15)
+            ax2.grid(True, alpha=0.2, linestyle='--', axis='y')
+            ax2.set_axisbelow(True)
+        else:
+            ax2.text(0.5, 0.5, 'No Autocalls', ha='center', va='center', fontsize=18, color='gray', transform=ax2.transAxes)
+            ax2.set_xlim(0, 1)
+            ax2.set_ylim(0, 1)
+            ax2.axis('off')
+        
+        plt.tight_layout()
+        st.pyplot(fig2, use_container_width=True)
+        plt.close(fig2)
         
         st.divider()
         
@@ -821,7 +810,7 @@ def show_pricer():
         paths3 = ensure_3d_paths(paths)
         tgrid = np.linspace(0, T, n_steps + 1)
         
-        fig3, ax3 = plt.subplots(figsize=(14, 5))
+        fig3, ax3 = plt.subplots(figsize=(14, 6))
         m = min(30, paths3.shape[0])
         
         for i in range(m):
@@ -833,14 +822,14 @@ def show_pricer():
         ax3.axhline(barrier, linestyle='--', color='red', label=f'Maturity Barrier ({barrier:.0%})', linewidth=2.5, alpha=0.85)
         ax3.axhline(1.0, linestyle=':', color='black', linewidth=1.5, alpha=0.5)
         
-        ax3.fill_between(tgrid, 0, coupon_trigger, alpha=0.05, color='red', label='No Coupon Zone')
+        ax3.fill_between(tgrid, 0, coupon_trigger, alpha=0.05, color='red')
         ax3.fill_between(tgrid, coupon_trigger, call_trigger, alpha=0.05, color='yellow')
         ax3.fill_between(tgrid, call_trigger, 1.5, alpha=0.05, color='green')
         
-        ax3.set_xlabel('Time (years)', fontsize=11, fontweight='bold')
-        ax3.set_ylabel('Basket Performance Ratio', fontsize=11, fontweight='bold')
-        ax3.set_title('Risk-Neutral Monte Carlo Paths', fontsize=12, fontweight='bold', pad=15)
-        ax3.legend(loc='best', fontsize=10)
+        ax3.set_xlabel('Time (years)', fontsize=12, fontweight='bold')
+        ax3.set_ylabel('Basket Performance Ratio', fontsize=12, fontweight='bold')
+        ax3.set_title('Risk-Neutral Monte Carlo Paths', fontsize=13, fontweight='bold', pad=15)
+        ax3.legend(loc='best', fontsize=11)
         ax3.grid(True, alpha=0.2, linestyle='--')
         ax3.set_axisbelow(True)
         ax3.set_ylim(0, 1.5)
