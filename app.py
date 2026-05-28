@@ -709,8 +709,6 @@ def show_pricer():
         <div class="big-price">
             Fair Value: ${estimated_price:.2f}
         </div>
-        <div class="price-subtitle">
-            What you should pay today for $100 nominal | Expected Return: {price_return:+.2f}%
         </div>
         """, unsafe_allow_html=True)
         
