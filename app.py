@@ -340,7 +340,7 @@ def show_pricer():
         use_q = st.checkbox("Set dividend yields", value=False)
         
         st.header("Monte Carlo")
-        n_sims = st.slider("Simulations", 1000, 10000, 10000, step=1000)
+        n_sims = st.slider("Simulations", 10, 1000, 1000, step=10)
         seed = st.number_input("Random seed", value=42, step=1)
         
         nominal = 100.0
