@@ -179,7 +179,7 @@ def phoenix_payoff(
         
         if memory:
             accrued_alive = accrued[alive] + nominal * coupon_rate_per_obs
-            payoff[alive] += accrued_alive * coupon_ok
+            payoff[alive] += accrued_live * coupon_ok
             accrued[alive] = accrued_alive * (~coupon_ok)
         else:
             payoff[alive] += (nominal * coupon_rate_per_obs) * coupon_ok
@@ -507,7 +507,7 @@ def show_pricer():
         mode = st.radio("Parameter source", ["Manual parameters", "Market data (Yahoo Finance)"], index=0)
         
         st.header("📋 Product Structure")
-        nominal = st.number_input("Nominal", min_value=1.0, value=1000.0, step=100.0)
+        nominal = st.number_input("Nominal",value=100 )
         T = st.number_input("Maturity (years)", min_value=0.25, value=3.0, step=0.25)
         steps_per_year = st.selectbox("Simulation steps/year", [252, 52, 12], index=0)
         obs_per_year = st.selectbox("Observation frequency/year", [12, 4, 2, 1], index=1)
