@@ -600,7 +600,19 @@ def show_pricer():
         if px_preview is not None:
             st.divider()
             st.subheader("Market Data Preview", divider="blue")
-            st.line_chart(px_preview)
+            
+            fig4, ax4 = plt.subplots(figsize=(14, 5), dpi=100)
+            for col in px_preview.columns:
+                ax4.plot(px_preview.index, px_preview[col], label=col, linewidth=2)
+            
+            ax4.set_xlabel('Date', fontsize=12, fontweight='bold')
+            ax4.set_ylabel('Price ($)', fontsize=12, fontweight='bold')
+            ax4.set_title('Historical Prices', fontsize=13, fontweight='bold', pad=15)
+            ax4.legend(fontsize=11)
+            ax4.grid(True, alpha=0.2)
+            
+            st.pyplot(fig4, use_container_width=True)
+            plt.close(fig4)
         
         st.divider()
         st.caption("Disclaimer: Fair value pricing uses risk-neutral Monte Carlo simulation with discount rate applied. Assumes constant volatility and rates.")
@@ -625,3 +637,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
