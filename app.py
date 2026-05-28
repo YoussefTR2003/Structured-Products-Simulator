@@ -29,9 +29,9 @@ st.markdown("""
         padding: 30px;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        border-radius: 12px;
+        border-radius: 8px;
         margin: 30px 0 10px 0;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .price-subtitle {
         font-size: 14px;
@@ -39,13 +39,6 @@ st.markdown("""
         color: #555;
         margin-bottom: 30px;
         font-weight: 500;
-    }
-    .metric-box {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        padding: 15px;
-        border-radius: 8px;
-        border-left: 4px solid #667eea;
-        margin: 5px 0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -840,6 +833,7 @@ def show_pricer():
         
         if px_preview is not None:
             st.divider()
+            st.subheader("Market Data Preview", divider="blue")
             st.line_chart(px_preview)
         
         st.divider()
