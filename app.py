@@ -315,7 +315,7 @@ def fetch_market_params(
 
 def show_pricer():
     st.title("Autocall Phoenix Pricer")
-    st.markdown("**Initial Investment: $100 | Fair Value Pricing with Risk-Neutral Monte Carlo**")
+    st.markdown("** Fair Value Pricing with Risk-Neutral Monte Carlo**")
     
     with st.sidebar:
         st.header("Mode")
