@@ -840,7 +840,6 @@ def show_pricer():
         
         if px_preview is not None:
             st.divider()
-            st.subheader("Market Data Preview", divider="blue")
             st.line_chart(px_preview)
         
         st.divider()
