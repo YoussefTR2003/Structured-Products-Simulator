@@ -491,39 +491,56 @@ def show_pricer():
         
         st.divider()
         
-        # ===== INPUT SUMMARY =====
+        # ===== INPUT SUMMARY - REDESIGNED =====
         st.subheader("Input Summary", divider="blue")
         
         labels = tickers if tickers else [f"A{i+1}" for i in range(len(S0))]
         
-        col1, col2, col3 = st.columns(3)
+        # ===== TOP ROW: UNDERLYINGS & PRODUCT PARAMS =====
+        col_under, col_product = st.columns([1.2, 1])
         
-        with col1:
-            st.caption("Underlyings")
+        with col_under:
+            st.markdown("**Underlyings**")
             df_params = pd.DataFrame({
                 "Price": [f"${x:.2f}" for x in S0],
-                "Vol": [f"{x:.1%}" for x in sigma]
+                "Volatility": [f"{x:.1%}" for x in sigma]
             }, index=labels)
-            st.dataframe(df_params, use_container_width=True, height=120)
+            st.dataframe(df_params, use_container_width=True, height=150)
         
-        with col2:
-            st.caption("Correlation Matrix")
-            df_corr = pd.DataFrame(corr, index=labels, columns=labels)
-            st.dataframe(df_corr.round(2), use_container_width=True, height=120)
+        with col_product:
+            st.markdown("**Product Structure**")
+            product_data = {
+                "Maturity": f"{T:.2f} years",
+                "Coupon p.a.": f"{coupon_pa:.1%}",
+                "Coupon Trigger": f"{coupon_trigger:.0%}",
+                "Autocall Trigger": f"{call_trigger:.0%}",
+                "Maturity Barrier": f"{barrier:.0%}",
+                "Basket Type": basket_kind.capitalize(),
+            }
+            
+            for key, val in product_data.items():
+                st.markdown(f"<div style='padding: 8px 0;'><b>{key}:</b> <code>{val}</code></div>", unsafe_allow_html=True)
+            
+            st.markdown(f"<div style='padding: 8px 0; border-top: 1px solid #ddd; margin-top: 10px;'><b>Risk-free Rate:</b> <code>{r:.2%}</code></div>", unsafe_allow_html=True)
         
-        with col3:
-            st.caption("Product Parameters")
-            params_info = [
-                ("Maturity", f"{T:.2f}y"),
-                ("Coupon p.a.", f"{coupon_pa:.1%}"),
-                ("Coupon Trigger", f"{coupon_trigger:.0%}"),
-                ("Autocall", f"{call_trigger:.0%}"),
-                ("Barrier", f"{barrier:.0%}"),
-                ("Basket", basket_kind.capitalize()),
-                ("Risk-free Rate", f"{r:.2%}")
-            ]
-            for key, val in params_info:
-                st.text(f"{key}: {val}")
+        st.divider()
+        
+        # ===== BOTTOM ROW: CORRELATION MATRIX =====
+        st.markdown("**Correlation Matrix**")
+        df_corr = pd.DataFrame(corr, index=labels, columns=labels)
+        
+        # Format correlation as heatmap-style with colors
+        def color_corr(val):
+            if val < 0:
+                color = f'rgba(255, 0, 0, {abs(val) * 0.3})'
+            elif val > 0:
+                color = f'rgba(0, 102, 204, {val * 0.3})'
+            else:
+                color = 'rgba(0,0,0,0)'
+            return f'background-color: {color}'
+        
+        styled_corr = df_corr.round(3).style.applymap(color_corr, subset=pd.IndexSlice[:, :])
+        st.dataframe(styled_corr, use_container_width=True, height=180)
         
         st.divider()
         
@@ -637,4 +654,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
