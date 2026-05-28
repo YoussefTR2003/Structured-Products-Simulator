@@ -92,7 +92,7 @@ def cholesky_safe(corr: np.ndarray) -> np.ndarray:
 @st.cache_data(
     ttl=300,
     max_entries=3,
-    show_spinner="🔄 Simulating paths..."
+    show_spinner="Simulating paths..."
 )
 def simulate_correlated_gbm(
     S0: tuple,
@@ -318,22 +318,22 @@ def fetch_market_params(
 # ==========================================
 
 def show_documentation():
-    st.title("📚 How the Phoenix Pricer Works")
+    st.title("How the Phoenix Pricer Works")
     st.markdown("**Understanding the mathematics behind Phoenix autocall pricing**")
     
     section = st.sidebar.radio(
-        "📖 Jump to section:",
+        "Jump to section:",
         [
-            "🎯 What is an Autocall?",
-            "📊 Monte Carlo Simulation",
-            "🔗 Correlation & Cholesky",
-            "🧮 Geometric Brownian Motion",
-            "🧺 Basket Mechanisms"
+            "What is an Autocall?",
+            "Monte Carlo Simulation",
+            "Correlation & Cholesky",
+            "Geometric Brownian Motion",
+            "Basket Mechanisms"
         ]
     )
     
-    if section == "🎯 What is an Autocall?":
-        st.header("🎯 What is an Autocall (Phoenix)?")
+    if section == "What is an Autocall?":
+        st.header("What is an Autocall (Phoenix)?")
         
         st.markdown("""
         An **autocall** (or Phoenix) is a structured product that:
@@ -343,7 +343,7 @@ def show_documentation():
         3. **Protects capital** at maturity (with conditions)
         """)
         
-        st.subheader("📅 Product Timeline")
+        st.subheader("Product Timeline")
         
         fig, ax = plt.subplots(figsize=(12, 4))
         times = [0, 0.25, 0.5, 0.75, 1.0]
@@ -361,24 +361,24 @@ def show_documentation():
         st.pyplot(fig)
         plt.close()
         
-        st.subheader("💡 Example Scenarios")
+        st.subheader("Example Scenarios")
         
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.success("**🎉 Best Case**")
-            st.markdown("**Observation 2**: Asset > 100%\n\n✅ Autocalls early\n✅ Capital + Coupons\n⏱️ 6 months")
+            st.success("Best Case")
+            st.markdown("Observation 2: Asset > 100%\n\n✓ Autocalls early\n✓ Capital + Coupons\n6 months")
         
         with col2:
-            st.info("**📈 Good Case**")
-            st.markdown("**All Obs**: Asset > 70%\n\n✅ All coupons paid\n✅ Capital protected\n⏱️ 3 years")
+            st.info("Good Case")
+            st.markdown("All Obs: Asset > 70%\n\n✓ All coupons paid\n✓ Capital protected\n3 years")
         
         with col3:
-            st.warning("**📉 Bad Case**")
-            st.markdown("**Maturity**: Asset at 50%\n\n❌ No autocall\n⚠️ Capital loss\n💰 Some coupons")
+            st.warning("Bad Case")
+            st.markdown("Maturity: Asset at 50%\n\n✗ No autocall\nCapital loss\nSome coupons")
     
-    elif section == "📊 Monte Carlo Simulation":
-        st.header("📊 Monte Carlo Simulation")
+    elif section == "Monte Carlo Simulation":
+        st.header("Monte Carlo Simulation")
         
         st.markdown("""
         Autocalls are **path-dependent**: payoff depends on price history, not just final price.
@@ -388,7 +388,7 @@ def show_documentation():
         
         st.latex(r"\text{Price} \approx \frac{1}{N} \sum_{i=1}^{N} \text{Payoff}_i")
         
-        st.subheader("🎲 Interactive Demo")
+        st.subheader("Interactive Demo")
         
         n_paths = st.slider("Number of paths", 10, 200, 50, step=10)
         volatility = st.slider("Volatility", 0.1, 0.5, 0.25, step=0.05)
@@ -424,12 +424,12 @@ def show_documentation():
         st.pyplot(fig)
         plt.close()
     
-    elif section == "🔗 Correlation & Cholesky":
-        st.header("🔗 Correlation & Cholesky Decomposition")
+    elif section == "Correlation & Cholesky":
+        st.header("Correlation & Cholesky Decomposition")
         
         st.markdown("Multi-asset products need **correlated** simulations using Cholesky decomposition.")
         
-        st.subheader("🎨 Visual Correlation Demo")
+        st.subheader("Visual Correlation Demo")
         
         corr_value = st.slider("Correlation", -0.9, 0.9, 0.5, step=0.1)
         
@@ -455,12 +455,12 @@ def show_documentation():
         st.pyplot(fig)
         plt.close()
     
-    elif section == "🧮 Geometric Brownian Motion":
-        st.header("🧮 Geometric Brownian Motion (GBM)")
+    elif section == "Geometric Brownian Motion":
+        st.header("Geometric Brownian Motion (GBM)")
         
         st.latex(r"dS = \mu S dt + \sigma S dW")
         
-        st.subheader("🎮 Interactive GBM")
+        st.subheader("Interactive GBM")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -499,10 +499,10 @@ def show_documentation():
         st.pyplot(fig)
         plt.close()
     
-    elif section == "🧺 Basket Mechanisms":
-        st.header("🧺 Basket Mechanisms")
+    elif section == "Basket Mechanisms":
+        st.header("Basket Mechanisms")
         
-        st.subheader("📊 Basket Types")
+        st.subheader("Basket Types")
         
         assets_perf = {'Apple': 1.15, 'Microsoft': 1.05, 'Tesla': 0.85}
         perf_values = list(assets_perf.values())
@@ -528,7 +528,7 @@ def show_documentation():
             w3 = max(0, 1 - w1 - w2)
             
             if w3 < 0:
-                st.error("⚠️ Weights must sum to 1!")
+                st.error("Weights must sum to 1!")
             else:
                 weighted_perf = w1 * perf_values[0] + w2 * perf_values[1] + w3 * perf_values[2]
                 st.metric("Weighted Basket Performance", f"{weighted_perf:.0%}")
@@ -538,14 +538,14 @@ def show_documentation():
 # ==========================================
 
 def show_pricer():
-    st.title("🏛️ Autocall Phoenix Pricer")
+    st.title("Autocall Phoenix Pricer")
     st.markdown("**Initial Investment: $100 | Simulate the payoff with different parameters**")
     
     with st.sidebar:
-        st.header("📊 Mode")
+        st.header("Mode")
         mode = st.radio("Parameter source", ["Manual parameters", "Market data (Yahoo Finance)"], index=0)
         
-        st.header("📋 Product Structure")
+        st.header("Product Structure")
         T = st.number_input("Maturity (years)", min_value=0.25, value=3.0, step=0.25)
         steps_per_year = st.selectbox("Simulation steps/year", [252, 52, 12], index=0)
         obs_per_year = st.selectbox("Observation frequency/year", [12, 4, 2, 1], index=1)
@@ -556,14 +556,14 @@ def show_pricer():
         barrier = st.number_input("Maturity barrier", min_value=0.0, max_value=2.0, value=0.60, step=0.01)
         memory = st.checkbox("Memory coupon", value=True)
         
-        st.header("🧺 Basket")
+        st.header("Basket")
         basket_kind = st.selectbox("Basket type", ["worst-of", "best-of", "average", "weighted"], index=0)
         
-        st.header("💹 Rates")
+        st.header("Rates")
         r = st.number_input("Risk-free rate", value=0.02, step=0.005, format="%.3f")
         use_q = st.checkbox("Set dividend yields", value=False)
         
-        st.header("🎲 Monte Carlo")
+        st.header("Monte Carlo")
         n_sims = st.slider("Simulations", 1000, 10000, 10000, step=1000)
         seed = st.number_input("Random seed", value=42, step=1)
         
@@ -572,7 +572,7 @@ def show_pricer():
         n_steps_est = int(round(T * steps_per_year))
         mem_mb = (n_sims * n_steps_est * 2 * 8) / (1024**2)
         if mem_mb > 300:
-            st.warning(f"⚠️ Estimated memory: {mem_mb:.0f} MB")
+            st.warning(f"Estimated memory: {mem_mb:.0f} MB")
     
     tickers = None
     px_preview = None
@@ -586,16 +586,16 @@ def show_pricer():
         requested_tickers = [t.strip().upper() for t in tickers_str.split(",") if t.strip()]
         
         if not requested_tickers:
-            st.error("⚠️ Please enter at least 1 ticker")
+            st.error("Please enter at least 1 ticker")
             st.stop()
         
         try:
-            with st.spinner("📡 Fetching market data..."):
+            with st.spinner("Fetching market data..."):
                 S0, sigma, corr, px_preview, tickers = fetch_market_params(requested_tickers, lookback_years)
             
             if len(tickers) < len(requested_tickers):
                 failed = set(requested_tickers) - set(tickers)
-                st.warning(f"⚠️ Could not download: {', '.join(failed)}")
+                st.warning(f"Could not download: {', '.join(failed)}")
             
             n_assets = len(S0)
             q = np.zeros(n_assets)
@@ -615,7 +615,7 @@ def show_pricer():
                     q = np.array(q_list)
         
         except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
+            st.error(f"Error: {str(e)}")
             st.stop()
     
     else:
@@ -675,7 +675,7 @@ def show_pricer():
     coupon_rate_per_obs = coupon_pa / int(obs_per_year)
     
     try:
-        with st.spinner("🔄 Running Monte Carlo simulation..."):
+        with st.spinner("Running Monte Carlo simulation..."):
             paths = simulate_correlated_gbm(
                 S0=tuple(S0),
                 r=r,
@@ -702,7 +702,7 @@ def show_pricer():
         
         st.markdown(f"""
         <div class="big-price">
-            💰 Estimated Price: ${expected_price:.2f}
+            Estimated Price: ${expected_price:.2f}
         </div>
         <div class="price-subtitle">
             Expected Payoff with $100 Investment | Return: {price_return:+.2f}%
@@ -714,14 +714,14 @@ def show_pricer():
         
         with col1:
             st.metric(
-                "💵 Median Price",
+                "Median Price",
                 f"${median_price:.2f}",
                 delta=f"{(median_price/nominal - 1)*100:+.2f}%"
             )
         
         with col2:
             st.metric(
-                "📈 Autocall Prob",
+                "Autocall Probability",
                 f"{autocall_prob:.1f}%"
             )
         
@@ -743,23 +743,23 @@ def show_pricer():
         col1, col2 = st.columns([1, 2])
         
         with col1:
-            st.subheader("📊 Input Summary")
+            st.subheader("Input Summary")
             labels = tickers if tickers else [f"A{i+1}" for i in range(len(S0))]
             df_params = pd.DataFrame({"S0": S0, "Vol": sigma, "Div": q}, index=labels)
             st.dataframe(df_params, use_container_width=True)
             
-            st.caption("**Correlation Matrix**")
+            st.caption("Correlation Matrix")
             st.dataframe(pd.DataFrame(corr, index=labels, columns=labels).round(3), use_container_width=True)
             
-            st.subheader("📈 Key Metrics")
+            st.subheader("Key Metrics")
             st.dataframe(metrics_df, use_container_width=True)
             
             out_df = pd.DataFrame({"payoff": payoff, "autocalled": autocalled.astype(int)})
             csv = out_df.to_csv(index=False)
-            st.download_button("⬇️ Download Results (CSV)", data=csv, file_name="autocall_simulation.csv", mime="text/csv")
+            st.download_button("Download Results (CSV)", data=csv, file_name="autocall_simulation.csv", mime="text/csv")
         
         with col2:
-            st.subheader("💰 Payoff Distribution")
+            st.subheader("Payoff Distribution")
             fig1, ax1 = plt.subplots(figsize=(8, 5))
             ax1.hist(payoff, bins=80, edgecolor='black', alpha=0.7, color='steelblue')
             ax1.axvline(nominal, color='red', linestyle='--', linewidth=2, label=f'Initial ($100)')
@@ -771,7 +771,7 @@ def show_pricer():
             st.pyplot(fig1)
             plt.close(fig1)
             
-            st.subheader("⏱️ Autocall Timing")
+            st.subheader("Autocall Timing")
             calls = autocall_obs[autocall_obs >= 0]
             fig2, ax2 = plt.subplots(figsize=(8, 5))
             
@@ -790,7 +790,7 @@ def show_pricer():
             plt.close(fig2)
         
         # Sample paths
-        st.subheader("📉 Sample Paths (30 simulations)")
+        st.subheader("Sample Paths (30 simulations)")
         paths3 = ensure_3d_paths(paths)
         tgrid = np.linspace(0, T, n_steps + 1)
         
@@ -814,14 +814,14 @@ def show_pricer():
         plt.close(fig3)
         
         if px_preview is not None:
-            st.subheader("📊 Market Data Preview")
+            st.subheader("Market Data Preview")
             st.line_chart(px_preview)
         
         st.divider()
-        st.caption("⚠️ **Disclaimer**: Simplified simulator. See Documentation for limitations.")
+        st.caption("Disclaimer: Simplified simulator. See Documentation for limitations.")
     
     except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
+        st.error(f"Error: {str(e)}")
         st.stop()
 
 # ==========================================
@@ -830,12 +830,12 @@ def show_pricer():
 
 def main():
     page = st.sidebar.radio(
-        "📑 Navigation",
-        ["🏛️ Pricer", "📚 Documentation"],
+        "Navigation",
+        ["Pricer", "Documentation"],
         index=0
     )
     
-    if page == "📚 Documentation":
+    if page == "Documentation":
         show_documentation()
     else:
         show_pricer()
