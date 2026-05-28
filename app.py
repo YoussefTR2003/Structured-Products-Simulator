@@ -497,15 +497,16 @@ def show_pricer():
         labels = tickers if tickers else [f"A{i+1}" for i in range(len(S0))]
         
         # ===== TOP ROW: UNDERLYINGS & PRODUCT PARAMS =====
-        col_under, col_product = st.columns([1.2, 1])
+        col_under, col_product = st.columns([1, 1])
         
         with col_under:
             st.markdown("**Underlyings**")
             df_params = pd.DataFrame({
                 "Price": [f"${x:.2f}" for x in S0],
-                "Volatility": [f"{x:.1%}" for x in sigma]
+                "Volatility": [f"{x:.1%}" for x in sigma],
+                "Dividend": [f"{x:.2%}" for x in q]
             }, index=labels)
-            st.dataframe(df_params, use_container_width=True, height=150)
+            st.dataframe(df_params, use_container_width=True, height=220)
         
         with col_product:
             st.markdown("**Product Structure**")
@@ -516,12 +517,16 @@ def show_pricer():
                 "Autocall Trigger": f"{call_trigger:.0%}",
                 "Maturity Barrier": f"{barrier:.0%}",
                 "Basket Type": basket_kind.capitalize(),
+                "Risk-free Rate": f"{r:.2%}",
+                "Simulations": f"{int(n_sims):,}",
             }
             
+            html_content = "<div style='display: flex; flex-direction: column; gap: 10px;'>"
             for key, val in product_data.items():
-                st.markdown(f"<div style='padding: 8px 0;'><b>{key}:</b> <code>{val}</code></div>", unsafe_allow_html=True)
+                html_content += f"<div style='padding: 8px; background: #f8f9fa; border-radius: 4px; border-left: 3px solid #667eea;'><b>{key}:</b> <code style='background: white; padding: 2px 6px; border-radius: 3px;'>{val}</code></div>"
+            html_content += "</div>"
             
-            st.markdown(f"<div style='padding: 8px 0; border-top: 1px solid #ddd; margin-top: 10px;'><b>Risk-free Rate:</b> <code>{r:.2%}</code></div>", unsafe_allow_html=True)
+            st.markdown(html_content, unsafe_allow_html=True)
         
         st.divider()
         
@@ -540,7 +545,7 @@ def show_pricer():
             return f'background-color: {color}'
         
         styled_corr = df_corr.round(3).style.applymap(color_corr, subset=pd.IndexSlice[:, :])
-        st.dataframe(styled_corr, use_container_width=True, height=180)
+        st.dataframe(styled_corr, use_container_width=True, height=200)
         
         st.divider()
         
